@@ -1,0 +1,83 @@
+<svg
+  width="200"
+  height="200"
+  viewBox="0 0 200 200"
+  fill="none"
+  xmlns="http://www.w3.org/2000/svg"
+>
+  <defs>
+    <linearGradient id="hex-stroke" x1="40" y1="28" x2="160" y2="172" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22C55E" />
+      <stop offset="0.5" stop-color="#14B8A6" />
+      <stop offset="1" stop-color="#2563EB" />
+    </linearGradient>
+    <linearGradient id="hex-core" x1="56" y1="44" x2="144" y2="156" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ECFEFF" stop-opacity="0.96" />
+      <stop offset="1" stop-color="#DBEAFE" stop-opacity="0.88" />
+    </linearGradient>
+    <radialGradient id="hex-glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(100 100) rotate(90) scale(84)">
+      <stop offset="0" stop-color="#38BDF8" stop-opacity="0.26" />
+      <stop offset="1" stop-color="#38BDF8" stop-opacity="0" />
+    </radialGradient>
+    <filter id="soft-shadow" x="22" y="18" width="156" height="164" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix" />
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha" />
+      <feOffset dy="8" />
+      <feGaussianBlur stdDeviation="10" />
+      <feComposite in2="hardAlpha" operator="out" />
+      <feColorMatrix type="matrix" values="0 0 0 0 0.0588235 0 0 0 0 0.0941176 0 0 0 0 0.164706 0 0 0 0.22 0" />
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_1_1" />
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_1_1" result="shape" />
+    </filter>
+  </defs>
+
+  <g filter="url(#soft-shadow)">
+    <path d="M100 24L158 58V142L100 176L42 142V58L100 24Z" fill="url(#hex-glow)" />
+    <path
+      d="M100 28L154 59V141L100 172L46 141V59L100 28Z"
+      fill="url(#hex-core)"
+      fill-opacity="0.96"
+      stroke="url(#hex-stroke)"
+      stroke-width="4"
+    />
+    <path
+      d="M100 46L138 68V112L100 134L62 112V68L100 46Z"
+      stroke="url(#hex-stroke)"
+      stroke-width="3"
+      stroke-linejoin="round"
+      stroke-opacity="0.72"
+    />
+    <path
+      d="M100 60L125 74V104L100 118L75 104V74L100 60Z"
+      fill="#F8FAFC"
+      fill-opacity="0.82"
+      stroke="#0F172A"
+      stroke-opacity="0.1"
+      stroke-width="1.5"
+    />
+    <path
+      d="M100 60V118M75 74L125 104M125 74L75 104M62 112L100 90L138 112M62 68L100 90L138 68"
+      stroke="#0F172A"
+      stroke-opacity="0.22"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+    <circle cx="100" cy="90" r="10" fill="#0F172A" fill-opacity="0.06" />
+    <circle cx="100" cy="90" r="5.5" fill="url(#hex-stroke)" />
+    <path
+      d="M70 126L100 144L130 126"
+      stroke="#0F172A"
+      stroke-opacity="0.18"
+      stroke-width="1.5"
+      stroke-linecap="round"
+    />
+    <path
+      d="M83 54L100 44L117 54"
+      stroke="#FFFFFF"
+      stroke-opacity="0.7"
+      stroke-width="1.5"
+      stroke-linecap="round"
+    />
+  </g>
+</svg>
