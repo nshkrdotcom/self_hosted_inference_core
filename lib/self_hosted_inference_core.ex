@@ -31,6 +31,9 @@ defmodule SelfHostedInferenceCore do
           reused?: boolean()
         }
 
+  @type ensure_endpoint_result ::
+          {:ok, EndpointDescriptor.t(), CompatibilityResult.t()} | {:error, term()}
+
   @spec metadata() :: %{app: atom(), version: String.t()}
   def metadata do
     %{
@@ -104,6 +107,26 @@ defmodule SelfHostedInferenceCore do
     end
   end
 
+  @spec ensure_endpoint(map(), ConsumerManifest.t(), map() | keyword(), keyword()) ::
+          ensure_endpoint_result()
+  def ensure_endpoint(request, %ConsumerManifest{} = consumer_manifest, context, opts \\ [])
+      when is_map(request) and (is_map(context) or is_list(context)) do
+    with {:ok, %InstanceSpec{} = spec} <- normalize_request_instance_spec(request, context),
+         {:ok, %{endpoint: %EndpointDescriptor{} = endpoint, compatibility: compatibility}} <-
+           resolve_endpoint(spec, consumer_manifest, opts) do
+      {:ok, endpoint, compatibility}
+    end
+  end
+
+  def ensure_endpoint(request, %ConsumerManifest{} = _consumer_manifest, _context, _opts)
+      when not is_map(request) do
+    {:error, {:invalid_request, request}}
+  end
+
+  def ensure_endpoint(_request, consumer_manifest, _context, _opts) do
+    {:error, {:invalid_consumer_manifest, consumer_manifest}}
+  end
+
   @spec lease_instance(String.t(), keyword()) ::
           {:ok, %{endpoint: EndpointDescriptor.t(), lease: LeaseRef.t()}} | {:error, term()}
   def lease_instance(instance_id, opts \\ []) when is_binary(instance_id) do
@@ -153,6 +176,85 @@ defmodule SelfHostedInferenceCore do
 
   defp normalize_spec(%InstanceSpec{} = spec), do: {:ok, spec}
   defp normalize_spec(attrs) when is_list(attrs) or is_map(attrs), do: InstanceSpec.new(attrs)
+
+  defp normalize_request_instance_spec(request, context) do
+    with {:ok, target_preference} <- fetch_target_preference(request),
+         {:ok, backend} <- fetch_target_preference_field(target_preference, :backend) do
+      metadata =
+        target_preference
+        |> optional_target_preference_map(:metadata, %{})
+        |> Map.merge(context_metadata(request, context))
+
+      backend_options =
+        target_preference
+        |> optional_target_preference_map(:backend_options, %{})
+        |> maybe_put_boot_spec(target_preference)
+
+      InstanceSpec.new(
+        backend: backend,
+        startup_kind: optional_target_preference_field(target_preference, :startup_kind),
+        execution_surface:
+          optional_target_preference_field(target_preference, :execution_surface),
+        backend_options: backend_options,
+        metadata: metadata
+      )
+    end
+  end
+
+  defp fetch_target_preference(request) do
+    case get_value(request, :target_preference) do
+      %{} = target_preference -> {:ok, Map.new(target_preference)}
+      nil -> {:error, {:missing_request_field, :target_preference}}
+      other -> {:error, {:invalid_target_preference, other}}
+    end
+  end
+
+  defp fetch_target_preference_field(target_preference, field) do
+    case get_value(target_preference, field) do
+      nil -> {:error, {:missing_target_preference, field}}
+      value -> {:ok, value}
+    end
+  end
+
+  defp optional_target_preference_field(target_preference, field) do
+    get_value(target_preference, field)
+  end
+
+  defp optional_target_preference_map(target_preference, field, default) do
+    case get_value(target_preference, field) do
+      nil -> default
+      %{} = value -> Map.new(value)
+      value -> raise ArgumentError, "#{field} must be a map, got: #{inspect(value)}"
+    end
+  end
+
+  defp maybe_put_boot_spec(backend_options, target_preference) do
+    case get_value(target_preference, :boot_spec) do
+      nil -> backend_options
+      boot_spec -> Map.put_new(backend_options, :boot_spec, boot_spec)
+    end
+  end
+
+  defp context_metadata(request, context) do
+    context = Map.new(context)
+
+    %{}
+    |> put_optional_metadata(:request_id, get_value(request, :request_id))
+    |> put_optional_metadata(:run_id, get_value(context, :run_id))
+    |> put_optional_metadata(:attempt_id, get_value(context, :attempt_id))
+    |> put_optional_metadata(:boundary_ref, get_value(context, :boundary_ref))
+    |> put_optional_metadata(
+      :trace_id,
+      get_value(get_value(context, :observability, %{}), :trace_id)
+    )
+  end
+
+  defp put_optional_metadata(metadata, _field, nil), do: metadata
+  defp put_optional_metadata(metadata, field, value), do: Map.put(metadata, field, value)
+
+  defp get_value(map, field, default \\ nil) when is_map(map) do
+    Map.get(map, field, Map.get(map, Atom.to_string(field), default))
+  end
 
   defp await_timeout(opts) do
     Keyword.get(opts, :await_timeout_ms, 5_000)

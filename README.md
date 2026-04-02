@@ -100,10 +100,11 @@ kernel expects concrete backend packages to attach.
 
 ## Quick Start
 
-Define a backend or attach adapter, register it, and resolve an endpoint:
+Define a backend or attach adapter, register it, and ensure a northbound
+endpoint for a request:
 
 ```elixir
-alias SelfHostedInferenceCore.{ConsumerManifest, InstanceSpec}
+alias SelfHostedInferenceCore.ConsumerManifest
 
 :ok = SelfHostedInferenceCore.register_backend(MyBackend)
 
@@ -116,25 +117,37 @@ consumer =
     required_capabilities: %{streaming?: true},
     optional_capabilities: %{},
     constraints: %{},
-    metadata: %{}
+    metadata: %{adapter: :req_llm}
   )
 
-spec =
-  InstanceSpec.new!(
-    backend: :my_backend,
+request = %{
+  request_id: "req-123",
+  target_preference: %{
+    target_class: "self_hosted_endpoint",
+    backend: "my_backend",
     backend_options: %{model_identity: "demo-model"}
-  )
+  }
+}
 
-{:ok, resolution} =
-  SelfHostedInferenceCore.resolve_endpoint(
-    spec,
+context = %{
+  run_id: "run-123",
+  attempt_id: "run-123:1",
+  boundary_ref: "boundary-123",
+  observability: %{trace_id: "trace-123"}
+}
+
+{:ok, endpoint, compatibility} =
+  SelfHostedInferenceCore.ensure_endpoint(
+    request,
     consumer,
+    context,
     owner_ref: "run-123",
     ttl_ms: 30_000
   )
 
-resolution.endpoint.base_url
-resolution.lease.lease_ref
+endpoint.base_url
+endpoint.lease_ref
+compatibility.reason
 ```
 
 See [`examples/README.md`](examples/README.md) for runnable demos covering both
@@ -146,6 +159,7 @@ HexDocs includes:
 
 - architecture and stack-boundary guidance
 - concrete backend package guidance
+- the northbound endpoint contract used by `jido_integration`
 - runtime registry and lease semantics
 - startup-kind guidance for spawned and attached services
 - runnable examples

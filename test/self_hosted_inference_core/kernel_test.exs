@@ -67,6 +67,52 @@ defmodule SelfHostedInferenceCore.KernelTest do
              )
   end
 
+  test "ensure_endpoint/3 resolves a self-hosted request into an endpoint and compatibility" do
+    request = %{
+      request_id: "req-self-hosted-wrapper-1",
+      target_preference: %{
+        backend: :test_spawned_backend,
+        backend_options: %{model_identity: "wrapper-model"}
+      }
+    }
+
+    context = %{
+      run_id: "run-self-hosted-wrapper-1",
+      attempt_id: "run-self-hosted-wrapper-1:1",
+      observability: %{trace_id: "trace-self-hosted-wrapper-1"}
+    }
+
+    assert {:ok, %EndpointDescriptor{} = endpoint, %CompatibilityResult{} = compatibility} =
+             SelfHostedInferenceCore.ensure_endpoint(
+               request,
+               req_llm_consumer(),
+               context,
+               owner_ref: "owner-wrapper-a",
+               ttl_ms: 5_000
+             )
+
+    assert endpoint.target_class == :self_hosted_endpoint
+    assert endpoint.management_mode == :jido_managed
+    assert endpoint.lease_ref != nil
+    assert compatibility.compatible?
+    assert compatibility.reason == :protocol_match
+  end
+
+  test "ensure_endpoint/3 rejects requests without a backend selection" do
+    request = %{
+      request_id: "req-self-hosted-wrapper-missing-backend",
+      target_preference: %{backend_options: %{model_identity: "wrapper-model"}}
+    }
+
+    context = %{
+      run_id: "run-self-hosted-wrapper-missing-backend",
+      attempt_id: "run-self-hosted-wrapper-missing-backend:1"
+    }
+
+    assert {:error, {:missing_target_preference, :backend}} =
+             SelfHostedInferenceCore.ensure_endpoint(request, req_llm_consumer(), context)
+  end
+
   test "spawned instances publish endpoints and reuse compatible leases" do
     spec =
       InstanceSpec.new!(

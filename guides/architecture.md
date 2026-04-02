@@ -83,6 +83,21 @@ The kernel exposes four primary outputs to higher layers:
 `jido_integration` or another control-plane layer can resolve one of these
 endpoints and then hand the endpoint-shaped inputs to `req_llm`.
 
+The intended northbound entrypoint is `SelfHostedInferenceCore.ensure_endpoint/4`.
+It accepts:
+
+- a request map that includes `target_preference.backend`
+- a `ConsumerManifest`
+- a context map with run or trace identity
+- standard lease options such as `owner_ref` and `ttl_ms`
+
+It then:
+
+1. derives an `InstanceSpec`
+2. ensures or reuses the service runtime
+3. publishes an `EndpointDescriptor`
+4. returns the endpoint plus `CompatibilityResult`
+
 ## Why The Kernel Is Separate
 
 Self-hosted inference is a service-runtime problem, not a CLI-session problem

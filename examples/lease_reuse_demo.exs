@@ -154,7 +154,7 @@ defmodule SelfHostedInferenceCore.Examples.DemoBackend do
   end
 end
 
-alias SelfHostedInferenceCore.{ConsumerManifest, InstanceSpec}
+alias SelfHostedInferenceCore.ConsumerManifest
 
 :ok = SelfHostedInferenceCore.register_backend(SelfHostedInferenceCore.Examples.DemoBackend)
 
@@ -170,36 +170,58 @@ consumer =
     metadata: %{}
   )
 
-spec =
-  InstanceSpec.new!(
-    backend: :demo_file_service,
+request = %{
+  request_id: "req-self-hosted-example-1",
+  target_preference: %{
+    target_class: "self_hosted_endpoint",
+    backend: "demo_file_service",
     backend_options: %{model_identity: "example-model"}
-  )
+  }
+}
 
-{:ok, first} =
-  SelfHostedInferenceCore.resolve_endpoint(
-    spec,
+first_context = %{
+  run_id: "run-self-hosted-example-1",
+  attempt_id: "run-self-hosted-example-1:1",
+  boundary_ref: "boundary-self-hosted-example-1",
+  observability: %{trace_id: "trace-self-hosted-example-1"}
+}
+
+second_context = %{
+  run_id: "run-self-hosted-example-1",
+  attempt_id: "run-self-hosted-example-1:2",
+  boundary_ref: "boundary-self-hosted-example-1",
+  observability: %{trace_id: "trace-self-hosted-example-2"}
+}
+
+{:ok, first_endpoint, first_compatibility} =
+  SelfHostedInferenceCore.ensure_endpoint(
+    request,
     consumer,
+    first_context,
     owner_ref: "example-owner-a",
     ttl_ms: 30_000
   )
 
-{:ok, second} =
-  SelfHostedInferenceCore.resolve_endpoint(
-    spec,
+{:ok, second_endpoint, second_compatibility} =
+  SelfHostedInferenceCore.ensure_endpoint(
+    request,
     consumer,
+    second_context,
     owner_ref: "example-owner-b",
     ttl_ms: 30_000
   )
 
-IO.puts("First instance id:  #{first.instance.instance_id}")
-IO.puts("Second instance id: #{second.instance.instance_id}")
-IO.puts("Endpoint:           #{first.endpoint.base_url}")
-IO.puts("Reused instance?:   #{inspect(second.reused?)}")
-IO.puts("First lease:        #{first.lease.lease_ref}")
-IO.puts("Second lease:       #{second.lease.lease_ref}")
+IO.puts("First endpoint:     #{first_endpoint.base_url}")
+IO.puts("Second endpoint:    #{second_endpoint.base_url}")
 
-:ok = SelfHostedInferenceCore.release_lease(first.instance.instance_id, first.lease.lease_ref)
-:ok = SelfHostedInferenceCore.release_lease(second.instance.instance_id, second.lease.lease_ref)
-:ok = SelfHostedInferenceCore.stop_instance(first.instance.instance_id)
+IO.puts(
+  "Same endpoint?:     #{inspect(first_endpoint.endpoint_id == second_endpoint.endpoint_id)}"
+)
+
+IO.puts("First lease ref:    #{first_endpoint.lease_ref}")
+IO.puts("Second lease ref:   #{second_endpoint.lease_ref}")
+IO.puts("First compatibility #{inspect(first_compatibility.reason)}")
+IO.puts("Second compatibility #{inspect(second_compatibility.reason)}")
+
+:ok = SelfHostedInferenceCore.stop_all_instances()
 :ok = SelfHostedInferenceCore.unregister_backend(:demo_file_service)
