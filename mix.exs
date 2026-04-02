@@ -30,7 +30,7 @@ defmodule SelfHostedInferenceCore.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger],
+      extra_applications: [:logger, :inets, :ssl],
       mod: {SelfHostedInferenceCore.Application, []}
     ]
   end
@@ -43,87 +43,50 @@ defmodule SelfHostedInferenceCore.MixProject do
         "~> 0.1.0",
         "../external_runtime_transport"
       ),
-      local_or_hex_dep(:jason, "~> 1.4", "../external_runtime_transport/deps/jason",
+      repo_local_or_hex_dep(:jason, "~> 1.4", "../external_runtime_transport/deps/jason",
         override: true
       ),
-      local_or_hex_dep(
+      repo_local_or_hex_dep(
         :erlexec,
         "~> 2.2",
         "../external_runtime_transport/deps/erlexec",
         override: true
       ),
-      local_or_hex_dep(:erlex, "~> 0.2", "../external_runtime_transport/deps/erlex",
+      repo_local_or_hex_dep(:erlex, "~> 0.2", "../external_runtime_transport/deps/erlex",
         override: true
       ),
-      local_or_hex_dep(:zoi, "~> 0.14", "../external_runtime_transport/deps/zoi", override: true),
-      local_or_hex_dep(:bunt, "~> 1.0", "../external_runtime_transport/deps/bunt", override: true),
-      local_or_hex_dep(
+      repo_local_or_hex_dep(:bunt, "~> 1.0", "../external_runtime_transport/deps/bunt",
+        override: true
+      ),
+      repo_local_or_hex_dep(
         :file_system,
         "~> 1.1",
         "../external_runtime_transport/deps/file_system",
         override: true
       ),
-      local_or_hex_dep(
-        :earmark_parser,
-        "~> 1.4.44",
-        "../external_runtime_transport/deps/earmark_parser",
-        override: true,
-        only: :dev,
-        runtime: false
-      ),
-      local_or_hex_dep(
-        :makeup,
-        "~> 1.2",
-        "../external_runtime_transport/deps/makeup",
-        override: true,
-        only: :dev,
-        runtime: false
-      ),
-      local_or_hex_dep(
-        :makeup_elixir,
-        "~> 1.0",
-        "../external_runtime_transport/deps/makeup_elixir",
-        override: true,
-        only: :dev,
-        runtime: false
-      ),
-      local_or_hex_dep(
-        :makeup_erlang,
-        "~> 1.0",
-        "../external_runtime_transport/deps/makeup_erlang",
-        override: true,
-        only: :dev,
-        runtime: false
-      ),
-      local_or_hex_dep(
-        :nimble_parsec,
-        "~> 1.4",
-        "../external_runtime_transport/deps/nimble_parsec",
-        override: true
-      ),
-      local_or_hex_dep(
+      repo_local_or_hex_dep(
         :ex_doc,
         "~> 0.40",
         "../external_runtime_transport/deps/ex_doc",
-        override: true,
         only: :dev,
-        runtime: false
+        runtime: false,
+        override: true
       ),
-      local_or_hex_dep(
+      repo_local_or_hex_dep(
         :credo,
         "~> 1.7",
         "../external_runtime_transport/deps/credo",
-        override: true,
         only: [:dev, :test],
-        runtime: false
+        runtime: false,
+        override: true
       ),
-      local_or_hex_dep(
+      repo_local_or_hex_dep(
         :dialyxir,
         "~> 1.4",
         "../external_runtime_transport/deps/dialyxir",
-        override: true,
         only: :dev,
-        runtime: false
+        runtime: false,
+        override: true
       )
     ]
   end
@@ -164,6 +127,7 @@ defmodule SelfHostedInferenceCore.MixProject do
         "README.md": [title: "Overview", filename: "overview"],
         "guides/architecture.md": [title: "Architecture"],
         "guides/backend_packages.md": [title: "Backend Packages"],
+        "guides/ollama_attach.md": [title: "Ollama Attach"],
         "guides/runtime_registry.md": [title: "Runtime Registry"],
         "guides/startup_kinds.md": [title: "Startup Kinds"],
         "examples/README.md": [title: "Examples", filename: "examples"],
@@ -175,6 +139,7 @@ defmodule SelfHostedInferenceCore.MixProject do
         Guides: [
           "guides/architecture.md",
           "guides/backend_packages.md",
+          "guides/ollama_attach.md",
           "guides/runtime_registry.md",
           "guides/startup_kinds.md"
         ],
@@ -184,7 +149,8 @@ defmodule SelfHostedInferenceCore.MixProject do
       groups_for_modules: [
         "Public API": [
           SelfHostedInferenceCore,
-          SelfHostedInferenceCore.Backend
+          SelfHostedInferenceCore.Backend,
+          SelfHostedInferenceCore.Ollama
         ],
         Contracts: [
           SelfHostedInferenceCore.InstanceSpec,
@@ -192,7 +158,8 @@ defmodule SelfHostedInferenceCore.MixProject do
           SelfHostedInferenceCore.BackendManifest,
           SelfHostedInferenceCore.ConsumerManifest,
           SelfHostedInferenceCore.CompatibilityResult,
-          SelfHostedInferenceCore.LeaseRef
+          SelfHostedInferenceCore.LeaseRef,
+          SelfHostedInferenceCore.Ollama.AttachSpec
         ],
         "Runtime Types": [
           SelfHostedInferenceCore.RuntimeSnapshot,
@@ -223,7 +190,25 @@ defmodule SelfHostedInferenceCore.MixProject do
     end
   end
 
+  defp repo_local_or_hex_dep(app, version, relative_path, opts) do
+    path = Path.expand(relative_path, __DIR__)
+
+    if repo_local_dep_path?(path) do
+      {app, Keyword.put(opts, :path, path)}
+    else
+      {app, version, opts}
+    end
+  end
+
   defp local_dep_path?(path) do
     File.exists?(Path.join(path, "mix.exs")) or File.exists?(Path.join(path, "rebar.config"))
+  end
+
+  defp repo_local_dep_path?(path) do
+    use_repo_local_deps?() and local_dep_path?(path)
+  end
+
+  defp use_repo_local_deps? do
+    System.get_env("SELF_HOSTED_INFERENCE_CORE_USE_REPO_LOCAL_DEPS") in ["1", "true"]
   end
 end

@@ -47,6 +47,10 @@ Good fits:
 - externally managed `vllm`
 - service managers that publish an endpoint before the Elixir runtime arrives
 
+The first built-in attach adapter is `SelfHostedInferenceCore.Ollama`.
+It publishes `management_mode: :externally_managed` and keeps process
+ownership outside the kernel.
+
 ## Kernel Invariants
 
 The kernel rejects startup plans that break the ownership boundary. In

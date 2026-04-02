@@ -109,7 +109,9 @@ defmodule SelfHostedInferenceCore do
 
   @spec ensure_endpoint(map(), ConsumerManifest.t(), map() | keyword(), keyword()) ::
           ensure_endpoint_result()
-  def ensure_endpoint(request, %ConsumerManifest{} = consumer_manifest, context, opts \\ [])
+  def ensure_endpoint(request, consumer_manifest, context, opts \\ [])
+
+  def ensure_endpoint(request, %ConsumerManifest{} = consumer_manifest, context, opts)
       when is_map(request) and (is_map(context) or is_list(context)) do
     with {:ok, %InstanceSpec{} = spec} <- normalize_request_instance_spec(request, context),
          {:ok, %{endpoint: %EndpointDescriptor{} = endpoint, compatibility: compatibility}} <-
@@ -189,6 +191,7 @@ defmodule SelfHostedInferenceCore do
         target_preference
         |> optional_target_preference_map(:backend_options, %{})
         |> maybe_put_boot_spec(target_preference)
+        |> maybe_put_model_identity(request)
 
       InstanceSpec.new(
         backend: backend,
@@ -235,6 +238,25 @@ defmodule SelfHostedInferenceCore do
     end
   end
 
+  defp maybe_put_model_identity(backend_options, request) do
+    case {Map.has_key?(backend_options, :model_identity), request_model_identity(request)} do
+      {true, _model_identity} ->
+        backend_options
+
+      {false, nil} ->
+        backend_options
+
+      {false, model_identity} ->
+        Map.put(backend_options, :model_identity, model_identity)
+    end
+  end
+
+  defp request_model_identity(request) do
+    request
+    |> get_value(:model_preference, %{})
+    |> get_value(:id, get_value(get_value(request, :model_preference, %{}), :model))
+  end
+
   defp context_metadata(request, context) do
     context = Map.new(context)
 
@@ -271,9 +293,8 @@ defmodule SelfHostedInferenceCore do
          :ok <- validate_manifest_startup_kind(manifest, plan),
          :ok <- validate_management_mode(plan),
          :ok <- validate_transport_ownership(plan),
-         :ok <- validate_execution_surface_support(spec, manifest, plan),
-         :ok <- validate_manifest_management_mode(manifest, plan) do
-      :ok
+         :ok <- validate_execution_surface_support(spec, manifest, plan) do
+      validate_manifest_management_mode(manifest, plan)
     end
   end
 

@@ -8,12 +8,15 @@ Concrete backend packages are where service-specific truth should live.
 ## First Concrete Backend
 
 The first concrete backend package is `llama_cpp_ex`.
+The first built-in attach adapter is `SelfHostedInferenceCore.Ollama`.
 
 It proves the intended split:
 
 - `external_runtime_transport` owns process placement
 - `self_hosted_inference_core` owns runtime lifecycle and endpoint contracts
 - `llama_cpp_ex` owns `llama-server` boot flags, probes, and stop semantics
+- the built-in `ollama` adapter keeps externally managed attach semantics in
+  the kernel until a separate package is justified
 
 ## What A Backend Package Should Own
 
@@ -34,6 +37,11 @@ Backend packages should not own:
 - transport internals
 - client payload parsing
 - control-plane durability
+
+Attach adapters that stay inside `self_hosted_inference_core` should follow
+the same ownership rules. They can own backend-specific readiness and health
+interpretation, but they still must not claim daemon ownership or drift into
+client execution.
 
 ## Integration Shape
 

@@ -47,12 +47,21 @@ external_runtime_transport
 That split keeps service lifecycle in the runtime stack and keeps request
 execution in the client layer.
 
-## First Backend
+## Backends
 
-The first concrete backend package is now `llama_cpp_ex`.
+Two backend shapes are now proved:
 
-It plugs into the kernel by implementing `SelfHostedInferenceCore.Backend` and
-owns:
+- built-in attach adapter: `SelfHostedInferenceCore.Ollama`
+- concrete spawned backend package: `llama_cpp_ex`
+
+`SelfHostedInferenceCore.Ollama` proves the first truthful
+`management_mode: :externally_managed` path.
+It attaches to an already running Ollama daemon, owns readiness and health
+interpretation above the transport seam, and publishes the same northbound
+endpoint contract used by the spawned path.
+
+`llama_cpp_ex` plugs into the kernel by implementing
+`SelfHostedInferenceCore.Backend` and owns:
 
 - `llama-server` boot-spec normalization
 - readiness and health probes
@@ -60,8 +69,8 @@ owns:
 - backend manifest publication
 - endpoint descriptor production
 
-That keeps the kernel generic while still proving the northbound contracts on a
-real backend package.
+That keeps the kernel generic while proving both ownership shapes on real
+backends.
 
 ## Startup Kinds
 
@@ -97,6 +106,8 @@ Concrete backends register themselves against the kernel by implementing
 
 See [`guides/backend_packages.md`](guides/backend_packages.md) for how the
 kernel expects concrete backend packages to attach.
+See [`guides/ollama_attach.md`](guides/ollama_attach.md) for the built-in
+attached-local backend.
 
 ## Quick Start
 
@@ -158,6 +169,7 @@ See [`examples/README.md`](examples/README.md) for runnable demos covering both
 HexDocs includes:
 
 - architecture and stack-boundary guidance
+- built-in `ollama` attach guidance
 - concrete backend package guidance
 - the northbound endpoint contract used by `jido_integration`
 - runtime registry and lease semantics

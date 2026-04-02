@@ -25,15 +25,25 @@ demo in `llama_cpp_ex/examples/spawned_endpoint_demo.exs`.
 
 ## `:attach_existing_service` Demo
 
-`attach_existing_service_demo.exs` starts a small external fixture service,
-attaches to it through the kernel, and shows that:
+`attach_existing_service_demo.exs` attaches to a real externally managed
+Ollama daemon through `SelfHostedInferenceCore.Ollama` and shows that:
 
 - the runtime instance is resolved as `:externally_managed`
 - endpoint and lease contracts stay the same as the spawned path
-- stopping the kernel instance does not stop the attached external daemon
+- stopping the kernel instance only drops the kernel-owned lease path
+- the attached local endpoint can be resolved again without moving ownership
+  into the BEAM
 
 Run it with:
 
 ```bash
+OLLAMA_MODEL=llama3.2 \
 mix run examples/attach_existing_service_demo.exs
 ```
+
+Optional environment variables:
+
+- `OLLAMA_ROOT_URL`
+  - defaults to `http://127.0.0.1:11434` or `OLLAMA_HOST` when set
+- `OLLAMA_MODEL`
+  - defaults to `llama3.2`

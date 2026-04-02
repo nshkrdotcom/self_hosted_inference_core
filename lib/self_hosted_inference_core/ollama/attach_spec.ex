@@ -1,0 +1,212 @@
+defmodule SelfHostedInferenceCore.Ollama.AttachSpec do
+  @moduledoc """
+  Typed attach contract for the built-in `ollama` backend.
+  """
+
+  @default_root_url "http://127.0.0.1:11434"
+
+  defstruct contract_version: "inference.v1",
+            root_url: @default_root_url,
+            model_identity: nil,
+            api_key: nil,
+            headers: %{},
+            ollama_http: nil,
+            ready_timeout_ms: 5_000,
+            readiness_interval_ms: 100,
+            health_interval_ms: 1_000,
+            execution_surface: nil,
+            metadata: %{}
+
+  @type t :: %__MODULE__{
+          contract_version: String.t(),
+          root_url: String.t(),
+          model_identity: String.t(),
+          api_key: String.t() | nil,
+          headers: map(),
+          ollama_http:
+            (atom(), String.t(), map() | nil, keyword() ->
+               {:ok, pos_integer(), map()} | {:error, term()})
+            | nil,
+          ready_timeout_ms: pos_integer(),
+          readiness_interval_ms: pos_integer(),
+          health_interval_ms: pos_integer(),
+          execution_surface: keyword() | ExternalRuntimeTransport.ExecutionSurface.t() | nil,
+          metadata: map()
+        }
+
+  @spec new(keyword() | map()) :: {:ok, t()} | {:error, term()}
+  def new(attrs) when is_list(attrs), do: new(Map.new(attrs))
+
+  def new(attrs) when is_map(attrs) do
+    root_url =
+      attrs
+      |> get_value(:root_url, get_value(attrs, :base_url, default_root_url()))
+      |> normalize_root_url()
+
+    model_identity =
+      attrs
+      |> get_value(:model_identity, get_value(attrs, :model))
+      |> validate_required_string(:model_identity)
+
+    headers =
+      attrs
+      |> get_value(:headers, %{})
+      |> normalize_headers()
+      |> maybe_put_authorization(get_value(attrs, :api_key))
+
+    {:ok,
+     %__MODULE__{
+       root_url: root_url,
+       model_identity: model_identity,
+       api_key: normalize_optional_string(get_value(attrs, :api_key)),
+       headers: headers,
+       ollama_http: get_value(attrs, :ollama_http),
+       ready_timeout_ms: get_value(attrs, :ready_timeout_ms, 5_000),
+       readiness_interval_ms: get_value(attrs, :readiness_interval_ms, 100),
+       health_interval_ms: get_value(attrs, :health_interval_ms, 1_000),
+       execution_surface: get_value(attrs, :execution_surface),
+       metadata: Map.new(get_value(attrs, :metadata, %{}))
+     }}
+  rescue
+    error in ArgumentError -> {:error, error.message}
+  end
+
+  def new(_attrs), do: {:error, :invalid_attach_spec}
+
+  @spec new!(keyword() | map()) :: t()
+  def new!(attrs) do
+    case new(attrs) do
+      {:ok, %__MODULE__{} = spec} -> spec
+      {:error, reason} -> raise ArgumentError, "invalid ollama attach spec: #{inspect(reason)}"
+    end
+  end
+
+  @spec base_url(t()) :: String.t()
+  def base_url(%__MODULE__{root_url: root_url}), do: root_url <> "/v1"
+
+  @spec health_url(t()) :: String.t()
+  def health_url(%__MODULE__{root_url: root_url}), do: root_url <> "/api/version"
+
+  @spec instance_key(t()) :: String.t()
+  def instance_key(%__MODULE__{} = spec) do
+    identity =
+      %{
+        root_url: spec.root_url,
+        model_identity: spec.model_identity,
+        headers: spec.headers,
+        execution_surface: execution_surface_identity(spec.execution_surface)
+      }
+      |> :erlang.term_to_binary()
+      |> Base.url_encode64(padding: false)
+
+    "ollama:" <> identity
+  end
+
+  @spec default_root_url() :: String.t()
+  def default_root_url do
+    case System.get_env("OLLAMA_HOST") do
+      nil -> @default_root_url
+      value -> normalize_root_url(value)
+    end
+  end
+
+  defp get_value(map, field, default \\ nil) when is_map(map) do
+    Map.get(map, field, Map.get(map, Atom.to_string(field), default))
+  end
+
+  defp normalize_root_url(value) when is_binary(value) do
+    value
+    |> String.trim()
+    |> then(fn
+      "" ->
+        @default_root_url
+
+      <<"http://", _::binary>> = url ->
+        normalize_root_uri(url)
+
+      <<"https://", _::binary>> = url ->
+        normalize_root_uri(url)
+
+      url ->
+        normalize_root_uri("http://" <> url)
+    end)
+  end
+
+  defp normalize_root_uri(url) do
+    uri = URI.parse(url)
+
+    trimmed_path = String.trim_trailing(uri.path || "", "/")
+
+    path =
+      cond do
+        trimmed_path == "" ->
+          nil
+
+        trimmed_path == "/v1" ->
+          nil
+
+        String.ends_with?(trimmed_path, "/v1") ->
+          String.replace_suffix(trimmed_path, "/v1", "")
+
+        true ->
+          trimmed_path
+      end
+
+    %{uri | path: path, query: nil, fragment: nil}
+    |> URI.to_string()
+    |> String.trim_trailing("/")
+  end
+
+  defp validate_required_string(nil, field), do: raise(ArgumentError, "#{field} is required")
+
+  defp validate_required_string(value, field) do
+    case normalize_optional_string(value) do
+      nil -> raise ArgumentError, "#{field} is required"
+      normalized -> normalized
+    end
+  end
+
+  defp normalize_optional_string(nil), do: nil
+
+  defp normalize_optional_string(value) do
+    value
+    |> to_string()
+    |> String.trim()
+    |> case do
+      "" -> nil
+      normalized -> normalized
+    end
+  end
+
+  defp normalize_headers(headers) when is_map(headers) do
+    Enum.into(headers, %{}, fn {key, value} ->
+      {String.downcase(to_string(key)), to_string(value)}
+    end)
+  end
+
+  defp normalize_headers(_headers), do: %{}
+
+  defp maybe_put_authorization(headers, nil), do: headers
+
+  defp maybe_put_authorization(headers, api_key) do
+    Map.put(headers, "authorization", "Bearer " <> String.trim(to_string(api_key)))
+  end
+
+  defp execution_surface_identity(%ExternalRuntimeTransport.ExecutionSurface{} = surface) do
+    %{
+      surface_kind: surface.surface_kind,
+      surface_ref: surface.surface_ref,
+      target_id: surface.target_id
+    }
+  end
+
+  defp execution_surface_identity(surface) when is_list(surface) do
+    %{
+      surface_kind: Keyword.get(surface, :surface_kind, :local_subprocess),
+      surface_ref: Keyword.get(surface, :surface_ref),
+      target_id: Keyword.get(surface, :target_id)
+    }
+  end
+
+  defp execution_surface_identity(_surface), do: %{surface_kind: :local_subprocess}
+end
