@@ -169,6 +169,7 @@ defmodule SelfHostedInferenceCore do
          :ok <- validate_manifest_startup_kind(manifest, plan),
          :ok <- validate_management_mode(plan),
          :ok <- validate_transport_ownership(plan),
+         :ok <- validate_execution_surface_support(spec, manifest, plan),
          :ok <- validate_manifest_management_mode(manifest, plan) do
       :ok
     end
@@ -250,6 +251,22 @@ defmodule SelfHostedInferenceCore do
 
   defp validate_transport_ownership(%Backend.StartupPlan{}), do: :ok
 
+  defp validate_execution_surface_support(
+         %InstanceSpec{} = spec,
+         %BackendManifest{backend: backend, supported_surfaces: supported_surfaces},
+         %Backend.StartupPlan{} = plan
+       ) do
+    surface_kind = resolved_surface_kind(spec, plan)
+
+    if surface_kind in supported_surfaces do
+      :ok
+    else
+      {:error,
+       {:invalid_startup_plan,
+        {:unsupported_execution_surface, backend, surface_kind, supported_surfaces}}}
+    end
+  end
+
   defp validate_manifest_management_mode(
          %BackendManifest{backend: backend, management_modes: management_modes},
          %Backend.StartupPlan{management_mode: management_mode}
@@ -262,4 +279,31 @@ defmodule SelfHostedInferenceCore do
         {:manifest_management_mode_mismatch, backend, management_modes, management_mode}}}
     end
   end
+
+  defp resolved_surface_kind(
+         %InstanceSpec{execution_surface: spec_surface},
+         %Backend.StartupPlan{transport: transport}
+       ) do
+    case transport_surface_kind(transport) do
+      nil -> execution_surface_kind(spec_surface)
+      surface_kind -> surface_kind
+    end
+  end
+
+  defp transport_surface_kind(%Backend.TransportPlan{execution_surface: execution_surface}),
+    do: execution_surface_kind(execution_surface)
+
+  defp transport_surface_kind(nil), do: nil
+
+  defp execution_surface_kind(nil), do: :local_subprocess
+
+  defp execution_surface_kind(%ExternalRuntimeTransport.ExecutionSurface{
+         surface_kind: surface_kind
+       }),
+       do: surface_kind
+
+  defp execution_surface_kind(surface) when is_list(surface),
+    do: Keyword.get(surface, :surface_kind, :local_subprocess)
+
+  defp execution_surface_kind(_surface), do: :local_subprocess
 end

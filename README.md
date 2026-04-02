@@ -77,7 +77,8 @@ contract:
 
 Both paths use the same northbound endpoint and lease contracts.
 The kernel validates that backends keep startup kind, management mode, and
-transport ownership truthful.
+transport ownership truthful. It also rejects execution surfaces that are not
+declared in the backend manifest.
 
 ## Installation
 

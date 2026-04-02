@@ -55,6 +55,8 @@ practice that means:
 - requested `startup_kind` must match the backend-produced startup plan
 - manifest `startup_kind` and runtime `management_mode` must agree with the
   plan
+- requested or planned execution surfaces must stay within the backend
+  manifest's `supported_surfaces`
 - `:spawned` plans must carry a transport because the BEAM is claiming process
   ownership
 

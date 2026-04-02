@@ -26,6 +26,9 @@ Backend packages should own:
 - stop strategy
 - backend manifest details
 
+The kernel enforces the declared `supported_surfaces`, so backend manifests
+need to stay honest about where the runtime can actually execute.
+
 Backend packages should not own:
 
 - transport internals

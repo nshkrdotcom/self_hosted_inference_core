@@ -14,16 +14,19 @@ defmodule SelfHostedInferenceCore.RuntimeContractTest do
     _ = SelfHostedInferenceCore.unregister_backend(:test_spawned_backend)
     _ = SelfHostedInferenceCore.unregister_backend(:test_invalid_spawned_backend)
     _ = SelfHostedInferenceCore.unregister_backend(:test_invalid_attached_backend)
+    _ = SelfHostedInferenceCore.unregister_backend(:test_unsupported_surface_backend)
 
     :ok = SelfHostedInferenceCore.register_backend(SpawnedBackend)
     :ok = SelfHostedInferenceCore.register_backend(TestInvalidSpawnedBackend)
     :ok = SelfHostedInferenceCore.register_backend(TestInvalidAttachedBackend)
+    :ok = SelfHostedInferenceCore.register_backend(TestUnsupportedSurfaceBackend)
 
     on_exit(fn ->
       _ = SelfHostedInferenceCore.stop_all_instances()
       _ = SelfHostedInferenceCore.unregister_backend(:test_spawned_backend)
       _ = SelfHostedInferenceCore.unregister_backend(:test_invalid_spawned_backend)
       _ = SelfHostedInferenceCore.unregister_backend(:test_invalid_attached_backend)
+      _ = SelfHostedInferenceCore.unregister_backend(:test_unsupported_surface_backend)
     end)
 
     :ok
@@ -57,6 +60,22 @@ defmodule SelfHostedInferenceCore.RuntimeContractTest do
     assert {:error,
             {:invalid_startup_plan,
              {:management_mode_mismatch, :attach_existing_service, :jido_managed}}} =
+             SelfHostedInferenceCore.ensure_instance(spec)
+  end
+
+  test "ensure_instance rejects execution surfaces outside the backend manifest" do
+    spec =
+      InstanceSpec.new!(
+        backend: :test_unsupported_surface_backend,
+        startup_kind: :attach_existing_service,
+        execution_surface: [surface_kind: :ssh_exec],
+        backend_options: %{}
+      )
+
+    assert {:error,
+            {:invalid_startup_plan,
+             {:unsupported_execution_surface, :test_unsupported_surface_backend, :ssh_exec,
+              [:local_subprocess]}}} =
              SelfHostedInferenceCore.ensure_instance(spec)
   end
 end
@@ -145,6 +164,53 @@ defmodule TestInvalidAttachedBackend do
        transport: nil,
        endpoint_template: %{base_url: "http://127.0.0.1:65535/v1"},
        backend_state: %{}
+     }}
+  end
+
+  @impl Backend
+  def probe_readiness(state), do: {:ready, %{base_url: "http://127.0.0.1:65535/v1"}, state}
+
+  @impl Backend
+  def health_check(state), do: {:ok, :healthy, %{}, state}
+end
+
+defmodule TestUnsupportedSurfaceBackend do
+  @moduledoc false
+
+  alias SelfHostedInferenceCore.{Backend, BackendManifest, InstanceSpec}
+  alias SelfHostedInferenceCore.Backend.StartupPlan
+
+  @behaviour SelfHostedInferenceCore.Backend
+
+  @impl Backend
+  def backend_id, do: :test_unsupported_surface_backend
+
+  @impl Backend
+  def manifest do
+    BackendManifest.new!(
+      backend: backend_id(),
+      runtime_kind: :service,
+      management_modes: [:externally_managed],
+      startup_kind: :attach_existing_service,
+      protocols: [:openai_chat_completions],
+      capabilities: %{streaming?: true},
+      supported_surfaces: [:local_subprocess],
+      resource_profile: %{profile: :unsupported_surface_fixture},
+      metadata: %{fixture: :unsupported_surface}
+    )
+  end
+
+  @impl Backend
+  def startup_plan(%InstanceSpec{} = spec) do
+    {:ok,
+     %StartupPlan{
+       backend: backend_id(),
+       instance_key: "test_unsupported_surface_backend",
+       startup_kind: :attach_existing_service,
+       management_mode: :externally_managed,
+       transport: nil,
+       endpoint_template: %{base_url: "http://127.0.0.1:65535/v1"},
+       backend_state: %{execution_surface: spec.execution_surface}
      }}
   end
 

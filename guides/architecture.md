@@ -63,8 +63,8 @@ The kernel follows one service-oriented loop for both startup kinds:
 
 1. Resolve the backend module from the backend registry.
 2. Build a `StartupPlan` from an `InstanceSpec`.
-3. Validate that the requested startup kind, manifest, management mode, and
-   transport ownership agree.
+3. Validate that the requested startup kind, manifest, management mode,
+   execution surface, and transport ownership agree.
 4. Ensure or reuse a runtime instance keyed by the backend-provided instance
    identity.
 5. Drive readiness until the backend reports an executable endpoint.
