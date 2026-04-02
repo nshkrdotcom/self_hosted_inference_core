@@ -19,6 +19,9 @@ mix run examples/lease_reuse_demo.exs
 The example does not depend on a real model binary. It uses a long-lived
 subprocess fixture so the service-runtime and lease behavior remain honest.
 
+For the first concrete backend package, see the spawned endpoint publication
+demo in `llama_cpp_ex/examples/spawned_endpoint_demo.exs`.
+
 ## `:attach_existing_service` Demo
 
 `attach_existing_service_demo.exs` starts a small external fixture service,

@@ -47,6 +47,22 @@ external_runtime_transport
 That split keeps service lifecycle in the runtime stack and keeps request
 execution in the client layer.
 
+## First Backend
+
+The first concrete backend package is now `llama_cpp_ex`.
+
+It plugs into the kernel by implementing `SelfHostedInferenceCore.Backend` and
+owns:
+
+- `llama-server` boot-spec normalization
+- readiness and health probes
+- stop semantics for a spawned service
+- backend manifest publication
+- endpoint descriptor production
+
+That keeps the kernel generic while still proving the northbound contracts on a
+real backend package.
+
 ## Startup Kinds
 
 `self_hosted_inference_core` treats startup topology as an explicit part of the
@@ -77,6 +93,9 @@ end
 
 Concrete backends register themselves against the kernel by implementing
 `SelfHostedInferenceCore.Backend`.
+
+See [`guides/backend_packages.md`](guides/backend_packages.md) for how the
+kernel expects concrete backend packages to attach.
 
 ## Quick Start
 
@@ -125,6 +144,7 @@ See [`examples/README.md`](examples/README.md) for runnable demos covering both
 HexDocs includes:
 
 - architecture and stack-boundary guidance
+- concrete backend package guidance
 - runtime registry and lease semantics
 - startup-kind guidance for spawned and attached services
 - runnable examples

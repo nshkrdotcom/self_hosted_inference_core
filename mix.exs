@@ -163,6 +163,7 @@ defmodule SelfHostedInferenceCore.MixProject do
       extras: [
         "README.md": [title: "Overview", filename: "overview"],
         "guides/architecture.md": [title: "Architecture"],
+        "guides/backend_packages.md": [title: "Backend Packages"],
         "guides/runtime_registry.md": [title: "Runtime Registry"],
         "guides/startup_kinds.md": [title: "Startup Kinds"],
         "examples/README.md": [title: "Examples", filename: "examples"],
@@ -173,6 +174,7 @@ defmodule SelfHostedInferenceCore.MixProject do
         "Project Overview": ["README.md"],
         Guides: [
           "guides/architecture.md",
+          "guides/backend_packages.md",
           "guides/runtime_registry.md",
           "guides/startup_kinds.md"
         ],
