@@ -73,6 +73,7 @@ defmodule SelfHostedInferenceCore do
     with {:ok, %InstanceSpec{} = spec} <- normalize_spec(spec_or_attrs),
          {:ok, backend_module} <- BackendRegistry.fetch_module(spec.backend),
          {:ok, %Backend.StartupPlan{} = plan} <- backend_module.startup_plan(spec),
+         :ok <- validate_startup_plan(spec, backend_module, plan),
          {:ok, pid, reused?} <- RuntimeRegistry.ensure_instance(plan, backend_module),
          {:ok, %RuntimeSnapshot{} = snapshot} <-
            RuntimeInstance.await_ready(pid, await_timeout(opts)) do
@@ -155,5 +156,110 @@ defmodule SelfHostedInferenceCore do
 
   defp await_timeout(opts) do
     Keyword.get(opts, :await_timeout_ms, 5_000)
+  end
+
+  defp validate_startup_plan(
+         %InstanceSpec{} = spec,
+         backend_module,
+         %Backend.StartupPlan{} = plan
+       ) do
+    manifest = backend_module.manifest()
+
+    with :ok <- validate_requested_startup_kind(spec, plan),
+         :ok <- validate_manifest_startup_kind(manifest, plan),
+         :ok <- validate_management_mode(plan),
+         :ok <- validate_transport_ownership(plan),
+         :ok <- validate_manifest_management_mode(manifest, plan) do
+      :ok
+    end
+  end
+
+  defp validate_requested_startup_kind(
+         %InstanceSpec{startup_kind: nil},
+         %Backend.StartupPlan{}
+       ),
+       do: :ok
+
+  defp validate_requested_startup_kind(
+         %InstanceSpec{startup_kind: requested_startup_kind},
+         %Backend.StartupPlan{startup_kind: requested_startup_kind}
+       ),
+       do: :ok
+
+  defp validate_requested_startup_kind(
+         %InstanceSpec{startup_kind: requested_startup_kind},
+         %Backend.StartupPlan{startup_kind: actual_startup_kind}
+       ) do
+    {:error,
+     {:invalid_startup_plan,
+      {:requested_startup_kind_mismatch, requested_startup_kind, actual_startup_kind}}}
+  end
+
+  defp validate_manifest_startup_kind(
+         %BackendManifest{startup_kind: nil},
+         %Backend.StartupPlan{}
+       ),
+       do: :ok
+
+  defp validate_manifest_startup_kind(
+         %BackendManifest{startup_kind: startup_kind},
+         %Backend.StartupPlan{startup_kind: startup_kind}
+       ),
+       do: :ok
+
+  defp validate_manifest_startup_kind(
+         %BackendManifest{startup_kind: declared_startup_kind, backend: backend},
+         %Backend.StartupPlan{startup_kind: actual_startup_kind}
+       ) do
+    {:error,
+     {:invalid_startup_plan,
+      {:manifest_startup_kind_mismatch, backend, declared_startup_kind, actual_startup_kind}}}
+  end
+
+  defp validate_management_mode(%Backend.StartupPlan{
+         startup_kind: :spawned,
+         management_mode: :jido_managed
+       }),
+       do: :ok
+
+  defp validate_management_mode(%Backend.StartupPlan{
+         startup_kind: :attach_existing_service,
+         management_mode: :externally_managed
+       }),
+       do: :ok
+
+  defp validate_management_mode(%Backend.StartupPlan{
+         startup_kind: startup_kind,
+         management_mode: management_mode
+       }) do
+    {:error, {:invalid_startup_plan, {:management_mode_mismatch, startup_kind, management_mode}}}
+  end
+
+  defp validate_transport_ownership(%Backend.StartupPlan{
+         startup_kind: :spawned,
+         transport: %Backend.TransportPlan{}
+       }),
+       do: :ok
+
+  defp validate_transport_ownership(%Backend.StartupPlan{
+         startup_kind: :spawned,
+         backend: backend
+       }) do
+    {:error, {:invalid_startup_plan, {:spawned_requires_transport, backend}}}
+  end
+
+  defp validate_transport_ownership(%Backend.StartupPlan{}), do: :ok
+
+  defp validate_manifest_management_mode(
+         %BackendManifest{backend: backend, management_modes: management_modes},
+         %Backend.StartupPlan{management_mode: management_mode}
+       ) do
+    if management_mode in management_modes do
+      :ok
+    else
+      {:error,
+       {:invalid_startup_plan,
+        {:manifest_management_mode_mismatch, backend, management_modes, management_mode}}}
+    end
   end
 end

@@ -14,7 +14,7 @@ defmodule SelfHostedInferenceCore.MixProject do
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       description:
-        "Core Elixir primitives for building reliable self-hosted inference clients, provider adapters, transport boundaries, and operational controls for private AI runtimes.",
+        "Service-runtime kernel for self-hosted inference backends, owning readiness, health, lease reuse, and endpoint publication above the transport seam.",
       package: package(),
       docs: docs(),
       source_url: @source_url,

@@ -21,6 +21,7 @@ Characteristics:
 - stdout and stderr can participate in readiness interpretation
 - transport exit is part of lifecycle truth
 - `management_mode` resolves to `:jido_managed`
+- the startup plan must include a transport-owned process surface
 
 Good fits:
 
@@ -46,6 +47,17 @@ Good fits:
 - externally managed `vllm`
 - service managers that publish an endpoint before the Elixir runtime arrives
 
+## Kernel Invariants
+
+The kernel rejects startup plans that break the ownership boundary. In
+practice that means:
+
+- requested `startup_kind` must match the backend-produced startup plan
+- manifest `startup_kind` and runtime `management_mode` must agree with the
+  plan
+- `:spawned` plans must carry a transport because the BEAM is claiming process
+  ownership
+
 ## Shared Output Surface
 
 Both startup kinds converge on the same published contracts:
@@ -56,3 +68,6 @@ Both startup kinds converge on the same published contracts:
 
 That keeps higher-level consumers consistent while preserving truthful runtime
 ownership underneath.
+
+See [`examples/README.md`](../examples/README.md) for runnable demos of both
+startup kinds.

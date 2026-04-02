@@ -17,6 +17,7 @@ The kernel is intentionally narrow:
 
 - it owns service lifecycle state
 - it publishes endpoint-shaped runtime outputs
+- it rejects startup plans that contradict service-runtime ownership
 - it does not parse inference wire protocols
 - it does not own control-plane durability
 
@@ -62,11 +63,13 @@ The kernel follows one service-oriented loop for both startup kinds:
 
 1. Resolve the backend module from the backend registry.
 2. Build a `StartupPlan` from an `InstanceSpec`.
-3. Ensure or reuse a runtime instance keyed by the backend-provided instance
+3. Validate that the requested startup kind, manifest, management mode, and
+   transport ownership agree.
+4. Ensure or reuse a runtime instance keyed by the backend-provided instance
    identity.
-4. Drive readiness until the backend reports an executable endpoint.
-5. Publish an `EndpointDescriptor`.
-6. Track health and lease activity for as long as the instance remains alive.
+5. Drive readiness until the backend reports an executable endpoint.
+6. Publish an `EndpointDescriptor`.
+7. Track health and lease activity for as long as the instance remains alive.
 
 ## Northbound Contracts
 

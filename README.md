@@ -60,6 +60,8 @@ contract:
   - maps to `management_mode: :externally_managed`
 
 Both paths use the same northbound endpoint and lease contracts.
+The kernel validates that backends keep startup kind, management mode, and
+transport ownership truthful.
 
 ## Installation
 
@@ -115,8 +117,8 @@ resolution.endpoint.base_url
 resolution.lease.lease_ref
 ```
 
-See [`examples/README.md`](examples/README.md) for a runnable lease-reuse
-example.
+See [`examples/README.md`](examples/README.md) for runnable demos covering both
+`:spawned` and `:attach_existing_service`.
 
 ## HexDocs
 
