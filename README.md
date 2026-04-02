@@ -3,32 +3,67 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/nshkrdotcom/self_hosted_inference_core/blob/master/LICENSE">
-    <img src="https://img.shields.io/badge/license-MIT-0F172A.svg" alt="License: MIT" />
+  <a href="https://hex.pm/packages/self_hosted_inference_core">
+    <img src="https://img.shields.io/badge/hex-self__hosted__inference__core-8B5CF6.svg" alt="Hex package" />
   </a>
-  <img src="https://img.shields.io/badge/elixir-%7E%3E%201.18-4E2A8E.svg" alt="Elixir ~&gt; 1.18" />
   <a href="https://hexdocs.pm/self_hosted_inference_core">
     <img src="https://img.shields.io/badge/docs-HexDocs-2563EB.svg" alt="HexDocs" />
   </a>
+  <a href="./LICENSE">
+    <img src="https://img.shields.io/badge/license-MIT-111111.svg" alt="MIT License" />
+  </a>
 </p>
 
-# self_hosted_inference_core
+# SelfHostedInferenceCore
 
-`self_hosted_inference_core` is the foundational Elixir package for building
-private inference integrations with a clear boundary between provider adapters,
-transport mechanics, and operational policy. It is intended for environments
-where model execution stays under your control across local, edge, and
-dedicated infrastructure.
+`self_hosted_inference_core` is the service-runtime kernel for local and
+self-hosted inference backends.
 
-## Scope
+It owns the runtime concerns that sit between raw process placement and
+backend-specific boot logic:
 
-- Define stable primitives for self-hosted inference clients and adapters.
-- Keep transport and provider concerns separated from application logic.
-- Support operationally mature deployments that need auditability and control.
+- backend registration
+- runtime instance registration
+- startup-kind handling
+- readiness orchestration
+- health monitoring
+- lease and reuse semantics
+- endpoint publication
+- backend-to-consumer compatibility calculation
+
+It does **not** own transport mechanics or client protocol execution.
+`external_runtime_transport` owns process placement and IO lifecycle.
+`req_llm` remains the data-plane client after an endpoint has been resolved.
+
+## Runtime Stack
+
+```text
+external_runtime_transport
+  -> self_hosted_inference_core
+  -> concrete backend package or attach adapter
+  -> req_llm consumers through EndpointDescriptor
+```
+
+That split keeps service lifecycle in the runtime stack and keeps request
+execution in the client layer.
+
+## Startup Kinds
+
+`self_hosted_inference_core` treats startup topology as an explicit part of the
+contract:
+
+- `:spawned`
+  - BEAM-managed service lifecycle
+  - maps to `management_mode: :jido_managed`
+- `:attach_existing_service`
+  - externally managed daemon lifecycle
+  - maps to `management_mode: :externally_managed`
+
+Both paths use the same northbound endpoint and lease contracts.
 
 ## Installation
 
-Add `self_hosted_inference_core` to your list of dependencies in `mix.exs`:
+Add the package to your dependency list:
 
 ```elixir
 def deps do
@@ -38,10 +73,59 @@ def deps do
 end
 ```
 
-## Documentation
+Concrete backends register themselves against the kernel by implementing
+`SelfHostedInferenceCore.Backend`.
 
-HexDocs navigation includes the README, changelog, and license as top-level
-project pages once docs are generated and published.
+## Quick Start
+
+Define a backend or attach adapter, register it, and resolve an endpoint:
+
+```elixir
+alias SelfHostedInferenceCore.{ConsumerManifest, InstanceSpec}
+
+:ok = SelfHostedInferenceCore.register_backend(MyBackend)
+
+consumer =
+  ConsumerManifest.new!(
+    consumer: :jido_integration_req_llm,
+    accepted_runtime_kinds: [:service],
+    accepted_management_modes: [:jido_managed, :externally_managed],
+    accepted_protocols: [:openai_chat_completions],
+    required_capabilities: %{streaming?: true},
+    optional_capabilities: %{},
+    constraints: %{},
+    metadata: %{}
+  )
+
+spec =
+  InstanceSpec.new!(
+    backend: :my_backend,
+    backend_options: %{model_identity: "demo-model"}
+  )
+
+{:ok, resolution} =
+  SelfHostedInferenceCore.resolve_endpoint(
+    spec,
+    consumer,
+    owner_ref: "run-123",
+    ttl_ms: 30_000
+  )
+
+resolution.endpoint.base_url
+resolution.lease.lease_ref
+```
+
+See [`examples/README.md`](examples/README.md) for a runnable lease-reuse
+example.
+
+## HexDocs
+
+HexDocs includes:
+
+- architecture and stack-boundary guidance
+- runtime registry and lease semantics
+- startup-kind guidance for spawned and attached services
+- runnable examples
 
 ## License
 
