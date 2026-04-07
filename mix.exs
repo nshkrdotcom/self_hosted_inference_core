@@ -38,56 +38,10 @@ defmodule SelfHostedInferenceCore.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      local_or_hex_dep(
-        :external_runtime_transport,
-        "~> 0.1.0",
-        "../external_runtime_transport"
-      ),
-      repo_local_or_hex_dep(:jason, "~> 1.4", "../external_runtime_transport/deps/jason",
-        override: true
-      ),
-      repo_local_or_hex_dep(
-        :erlexec,
-        "~> 2.2",
-        "../external_runtime_transport/deps/erlexec",
-        override: true
-      ),
-      repo_local_or_hex_dep(:erlex, "~> 0.2", "../external_runtime_transport/deps/erlex",
-        override: true
-      ),
-      repo_local_or_hex_dep(:bunt, "~> 1.0", "../external_runtime_transport/deps/bunt",
-        override: true
-      ),
-      repo_local_or_hex_dep(
-        :file_system,
-        "~> 1.1",
-        "../external_runtime_transport/deps/file_system",
-        override: true
-      ),
-      repo_local_or_hex_dep(
-        :ex_doc,
-        "~> 0.40",
-        "../external_runtime_transport/deps/ex_doc",
-        only: :dev,
-        runtime: false,
-        override: true
-      ),
-      repo_local_or_hex_dep(
-        :credo,
-        "~> 1.7",
-        "../external_runtime_transport/deps/credo",
-        only: [:dev, :test],
-        runtime: false,
-        override: true
-      ),
-      repo_local_or_hex_dep(
-        :dialyxir,
-        "~> 1.4",
-        "../external_runtime_transport/deps/dialyxir",
-        only: :dev,
-        runtime: false,
-        override: true
-      )
+      {:external_runtime_transport, "~> 0.1.0"},
+      {:ex_doc, "~> 0.40", only: :dev, runtime: false},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4", only: :dev, runtime: false}
     ]
   end
 
@@ -107,8 +61,6 @@ defmodule SelfHostedInferenceCore.MixProject do
         "LICENSE",
         "README.md",
         ".formatter.exs",
-        "examples",
-        "guides",
         "lib",
         "mix.exs"
       ]
@@ -178,37 +130,5 @@ defmodule SelfHostedInferenceCore.MixProject do
       plt_local_path: "priv/plts",
       flags: [:error_handling, :underspecs]
     ]
-  end
-
-  defp local_or_hex_dep(app, version, relative_path, opts \\ []) do
-    path = Path.expand(relative_path, __DIR__)
-
-    if local_dep_path?(path) do
-      {app, Keyword.put(opts, :path, path)}
-    else
-      {app, version, opts}
-    end
-  end
-
-  defp repo_local_or_hex_dep(app, version, relative_path, opts) do
-    path = Path.expand(relative_path, __DIR__)
-
-    if repo_local_dep_path?(path) do
-      {app, Keyword.put(opts, :path, path)}
-    else
-      {app, version, opts}
-    end
-  end
-
-  defp local_dep_path?(path) do
-    File.exists?(Path.join(path, "mix.exs")) or File.exists?(Path.join(path, "rebar.config"))
-  end
-
-  defp repo_local_dep_path?(path) do
-    use_repo_local_deps?() and local_dep_path?(path)
-  end
-
-  defp use_repo_local_deps? do
-    System.get_env("SELF_HOSTED_INFERENCE_CORE_USE_REPO_LOCAL_DEPS") in ["1", "true"]
   end
 end

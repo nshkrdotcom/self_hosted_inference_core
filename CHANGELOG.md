@@ -7,11 +7,6 @@ Versioning.
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-04-01
+## [0.1.0] - 2026-04-06
 
-### Added
-
-- Initial Elixir package scaffold for `self_hosted_inference_core`.
-- Publish-ready package metadata for Hex and HexDocs, including packaged SVG assets.
-- Repository documentation set consisting of the README, MIT license, and changelog.
-- Project logo asset at `assets/self_hosted_inference_core.svg`.
+- Initial Release
