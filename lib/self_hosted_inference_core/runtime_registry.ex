@@ -41,7 +41,12 @@ defmodule SelfHostedInferenceCore.RuntimeRegistry do
   def list_instances do
     @supervisor
     |> DynamicSupervisor.which_children()
-    |> Enum.map(fn {_id, pid, _type, _modules} -> RuntimeInstance.snapshot(pid) end)
+    |> Enum.flat_map(fn {_id, pid, _type, _modules} ->
+      case snapshot_instance(pid) do
+        {:ok, snapshot} -> [snapshot]
+        :error -> []
+      end
+    end)
     |> Enum.sort_by(& &1.instance_id)
   end
 
@@ -63,4 +68,10 @@ defmodule SelfHostedInferenceCore.RuntimeRegistry do
   end
 
   defp via(instance_id), do: {:via, Registry, {@registry, {:instance, instance_id}}}
+
+  defp snapshot_instance(pid) when is_pid(pid) do
+    {:ok, RuntimeInstance.snapshot(pid)}
+  catch
+    :exit, _reason -> :error
+  end
 end

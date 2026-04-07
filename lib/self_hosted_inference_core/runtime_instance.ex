@@ -114,7 +114,7 @@ defmodule SelfHostedInferenceCore.RuntimeInstance do
         {:noreply, state |> Map.put(:transport_pid, transport_pid) |> schedule_readiness()}
 
       {:error, reason} ->
-        {:stop, {:transport_start_failed, reason},
+        {:stop, {:shutdown, {:transport_start_failed, reason}},
          reply_waiters(state, {:error, {:transport_start_failed, reason}})}
     end
   end
@@ -198,7 +198,7 @@ defmodule SelfHostedInferenceCore.RuntimeInstance do
 
       {:error, reason, backend_state} ->
         state = state |> Map.put(:backend_state, backend_state) |> reply_waiters({:error, reason})
-        {:stop, {:readiness_failed, reason}, state}
+        {:stop, {:shutdown, {:readiness_failed, reason}}, state}
     end
   end
 
@@ -230,7 +230,7 @@ defmodule SelfHostedInferenceCore.RuntimeInstance do
 
   def handle_info(:readiness_timeout, %{lifecycle_status: :starting} = state) do
     state = reply_waiters(state, {:error, :readiness_timeout})
-    {:stop, :readiness_timeout, state}
+    {:stop, {:shutdown, :readiness_timeout}, state}
   end
 
   def handle_info(:readiness_timeout, state) do
@@ -294,7 +294,7 @@ defmodule SelfHostedInferenceCore.RuntimeInstance do
 
       {:stop, reason, backend_state} ->
         state = state |> Map.put(:backend_state, backend_state) |> reply_waiters({:error, reason})
-        {:stop, reason, state}
+        {:stop, stop_reason(state, reason), state}
     end
   end
 
@@ -454,4 +454,7 @@ defmodule SelfHostedInferenceCore.RuntimeInstance do
   defp now_ms do
     System.system_time(:millisecond)
   end
+
+  defp stop_reason(%{lifecycle_status: :starting}, reason), do: {:shutdown, reason}
+  defp stop_reason(_state, reason), do: reason
 end
