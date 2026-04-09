@@ -32,13 +32,13 @@ backend-specific boot logic:
 - backend-to-consumer compatibility calculation
 
 It does **not** own transport mechanics or client protocol execution.
-`external_runtime_transport` owns process placement and IO lifecycle.
+`execution_plane` owns process placement, IO lifecycle, and raw process facts.
 `req_llm` remains the data-plane client after an endpoint has been resolved.
 
 ## Runtime Stack
 
 ```text
-external_runtime_transport
+execution_plane
   -> self_hosted_inference_core
   -> concrete backend package or attach adapter
   -> req_llm consumers through EndpointDescriptor
@@ -52,7 +52,7 @@ execution in the client layer.
 Two backend shapes are now proved:
 
 - built-in attach adapter: `SelfHostedInferenceCore.Ollama`
-- concrete spawned backend package: `llama_cpp_ex`
+- concrete spawned backend package: `llama_cpp_sdk`
 
 `SelfHostedInferenceCore.Ollama` proves the first truthful
 `management_mode: :externally_managed` path.
@@ -60,7 +60,7 @@ It attaches to an already running Ollama daemon, owns readiness and health
 interpretation above the transport seam, and publishes the same northbound
 endpoint contract used by the spawned path.
 
-`llama_cpp_ex` plugs into the kernel by implementing
+`llama_cpp_sdk` plugs into the kernel by implementing
 `SelfHostedInferenceCore.Backend` and owns:
 
 - `llama-server` boot-spec normalization
@@ -86,7 +86,7 @@ contract:
 
 Both paths use the same northbound endpoint and lease contracts.
 The kernel validates that backends keep startup kind, management mode, and
-transport ownership truthful. It also rejects execution surfaces that are not
+substrate ownership truthful. It also rejects execution surfaces that are not
 declared in the backend manifest.
 
 ## Installation
@@ -103,6 +103,10 @@ end
 
 Concrete backends register themselves against the kernel by implementing
 `SelfHostedInferenceCore.Backend`.
+
+`self_hosted_inference_core` stays the service-runtime family kit. It consumes
+Execution Plane process facts for spawned services but keeps readiness, health,
+lease reuse, and endpoint publication semantics local to this repo.
 
 See [`guides/backend_packages.md`](guides/backend_packages.md) for how the
 kernel expects concrete backend packages to attach.
@@ -172,7 +176,7 @@ HexDocs includes:
 - built-in `ollama` attach guidance
 - concrete backend package guidance
 - the northbound endpoint contract used by `jido_integration`
-- runtime registry and lease semantics
+- runtime registry, lease reuse, and endpoint publication semantics
 - startup-kind guidance for spawned and attached services
 - runnable examples
 

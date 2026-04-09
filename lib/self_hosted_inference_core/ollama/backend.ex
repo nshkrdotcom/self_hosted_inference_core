@@ -203,7 +203,7 @@ defmodule SelfHostedInferenceCore.Ollama.Backend do
     |> Map.merge(Map.new(attach_spec.metadata))
   end
 
-  defp boundary_ref(%ExternalRuntimeTransport.ExecutionSurface{} = surface) do
+  defp boundary_ref(%ExecutionPlane.Placements.Surface{} = surface) do
     surface.surface_ref || surface.target_id
   end
 
@@ -211,13 +211,30 @@ defmodule SelfHostedInferenceCore.Ollama.Backend do
     Keyword.get(surface, :surface_ref) || Keyword.get(surface, :target_id)
   end
 
+  defp boundary_ref(surface) when is_map(surface) do
+    Map.get(surface, :surface_ref, Map.get(surface, "surface_ref")) ||
+      Map.get(surface, :target_id, Map.get(surface, "target_id"))
+  end
+
   defp boundary_ref(_surface), do: nil
 
-  defp surface_kind(%ExternalRuntimeTransport.ExecutionSurface{} = surface),
-    do: surface.surface_kind
+  defp surface_kind(%ExecutionPlane.Placements.Surface{} = surface),
+    do: normalize_surface_kind(surface.surface_kind)
 
   defp surface_kind(surface) when is_list(surface),
-    do: Keyword.get(surface, :surface_kind, :local_subprocess)
+    do: normalize_surface_kind(Keyword.get(surface, :surface_kind, :local_subprocess))
+
+  defp surface_kind(surface) when is_map(surface) do
+    surface
+    |> Map.get(:surface_kind, Map.get(surface, "surface_kind", :local_subprocess))
+    |> normalize_surface_kind()
+  end
 
   defp surface_kind(_surface), do: :local_subprocess
+
+  defp normalize_surface_kind("local_subprocess"), do: :local_subprocess
+  defp normalize_surface_kind("ssh_exec"), do: :ssh_exec
+  defp normalize_surface_kind("guest_bridge"), do: :guest_bridge
+  defp normalize_surface_kind(surface_kind) when is_atom(surface_kind), do: surface_kind
+  defp normalize_surface_kind(_surface_kind), do: :local_subprocess
 end

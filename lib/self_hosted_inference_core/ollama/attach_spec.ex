@@ -30,7 +30,7 @@ defmodule SelfHostedInferenceCore.Ollama.AttachSpec do
           ready_timeout_ms: pos_integer(),
           readiness_interval_ms: pos_integer(),
           health_interval_ms: pos_integer(),
-          execution_surface: keyword() | ExternalRuntimeTransport.ExecutionSurface.t() | nil,
+          execution_surface: keyword() | map() | ExecutionPlane.Placements.Surface.t() | nil,
           metadata: map()
         }
 
@@ -192,9 +192,9 @@ defmodule SelfHostedInferenceCore.Ollama.AttachSpec do
     Map.put(headers, "authorization", "Bearer " <> String.trim(to_string(api_key)))
   end
 
-  defp execution_surface_identity(%ExternalRuntimeTransport.ExecutionSurface{} = surface) do
+  defp execution_surface_identity(%ExecutionPlane.Placements.Surface{} = surface) do
     %{
-      surface_kind: surface.surface_kind,
+      surface_kind: normalize_surface_kind(surface.surface_kind),
       surface_ref: surface.surface_ref,
       target_id: surface.target_id
     }
@@ -208,5 +208,22 @@ defmodule SelfHostedInferenceCore.Ollama.AttachSpec do
     }
   end
 
+  defp execution_surface_identity(surface) when is_map(surface) do
+    %{
+      surface_kind:
+        surface
+        |> Map.get(:surface_kind, Map.get(surface, "surface_kind", :local_subprocess))
+        |> normalize_surface_kind(),
+      surface_ref: Map.get(surface, :surface_ref, Map.get(surface, "surface_ref")),
+      target_id: Map.get(surface, :target_id, Map.get(surface, "target_id"))
+    }
+  end
+
   defp execution_surface_identity(_surface), do: %{surface_kind: :local_subprocess}
+
+  defp normalize_surface_kind("local_subprocess"), do: :local_subprocess
+  defp normalize_surface_kind("ssh_exec"), do: :ssh_exec
+  defp normalize_surface_kind("guest_bridge"), do: :guest_bridge
+  defp normalize_surface_kind(surface_kind) when is_atom(surface_kind), do: surface_kind
+  defp normalize_surface_kind(_surface_kind), do: :local_subprocess
 end

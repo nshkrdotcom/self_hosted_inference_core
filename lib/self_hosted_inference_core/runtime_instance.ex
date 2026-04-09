@@ -3,7 +3,7 @@ defmodule SelfHostedInferenceCore.RuntimeInstance do
 
   use GenServer
 
-  alias ExternalRuntimeTransport.Transport
+  alias ExecutionPlane.Process.Transport
 
   alias SelfHostedInferenceCore.{
     Backend,
@@ -435,14 +435,37 @@ defmodule SelfHostedInferenceCore.RuntimeInstance do
 
   defp execution_surface_opts(nil), do: []
 
-  defp execution_surface_opts(%ExternalRuntimeTransport.ExecutionSurface{} = surface) do
+  defp execution_surface_opts(%ExecutionPlane.Placements.Surface{} = surface) do
     surface
     |> Map.from_struct()
+    |> Map.delete(:__struct__)
+    |> Map.update!(:surface_kind, &normalize_surface_kind/1)
     |> Enum.reject(fn {_key, value} -> is_nil(value) or value == [] or value == %{} end)
     |> Enum.into([])
   end
 
+  defp execution_surface_opts(surface) when is_map(surface) do
+    surface
+    |> Map.new(fn
+      {:__struct__, _value} -> nil
+      {"surface_kind", value} -> {:surface_kind, normalize_surface_kind(value)}
+      {:surface_kind, value} -> {:surface_kind, normalize_surface_kind(value)}
+      {key, value} when is_binary(key) -> {String.to_existing_atom(key), value}
+      pair -> pair
+    end)
+    |> Enum.reject(fn
+      nil -> true
+      {_key, value} -> is_nil(value) or value == [] or value == %{}
+    end)
+  end
+
   defp execution_surface_opts(opts) when is_list(opts), do: opts
+
+  defp normalize_surface_kind("local_subprocess"), do: :local_subprocess
+  defp normalize_surface_kind("ssh_exec"), do: :ssh_exec
+  defp normalize_surface_kind("guest_bridge"), do: :guest_bridge
+  defp normalize_surface_kind(value) when is_atom(value), do: value
+  defp normalize_surface_kind(_value), do: :local_subprocess
 
   defp cancel_timer(nil), do: :ok
   defp cancel_timer(timer), do: Process.cancel_timer(timer)

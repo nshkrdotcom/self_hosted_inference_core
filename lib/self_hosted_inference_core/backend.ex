@@ -3,8 +3,7 @@ defmodule SelfHostedInferenceCore.Backend do
   Behaviour for self-hosted runtime backends and attach adapters.
   """
 
-  alias ExternalRuntimeTransport.Command
-  alias ExternalRuntimeTransport.ProcessExit
+  alias ExecutionPlane.{Command, ProcessExit}
   alias SelfHostedInferenceCore.{BackendManifest, InstanceSpec}
 
   @type startup_kind :: :spawned | :attach_existing_service
@@ -31,7 +30,7 @@ defmodule SelfHostedInferenceCore.Backend do
 
     @type t :: %__MODULE__{
             command: Command.t() | String.t(),
-            execution_surface: keyword() | ExternalRuntimeTransport.ExecutionSurface.t() | nil,
+            execution_surface: keyword() | map() | ExecutionPlane.Placements.Surface.t() | nil,
             stdout_mode: :line | :raw,
             stdin_mode: :line | :raw,
             pty?: boolean()

@@ -38,11 +38,21 @@ defmodule SelfHostedInferenceCore.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:external_runtime_transport, "~> 0.1.0"},
+      execution_plane_dep(),
       {:ex_doc, "~> 0.40", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: :dev, runtime: false}
     ]
+  end
+
+  defp execution_plane_dep do
+    path = Path.expand("../execution_plane", __DIR__)
+
+    if File.dir?(path) do
+      {:execution_plane, path: path, override: true}
+    else
+      {:execution_plane, "~> 0.1.0"}
+    end
   end
 
   defp package do

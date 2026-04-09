@@ -420,13 +420,23 @@ defmodule SelfHostedInferenceCore do
 
   defp execution_surface_kind(nil), do: :local_subprocess
 
-  defp execution_surface_kind(%ExternalRuntimeTransport.ExecutionSurface{
-         surface_kind: surface_kind
-       }),
-       do: surface_kind
+  defp execution_surface_kind(%ExecutionPlane.Placements.Surface{surface_kind: surface_kind}),
+    do: normalize_surface_kind(surface_kind)
 
   defp execution_surface_kind(surface) when is_list(surface),
-    do: Keyword.get(surface, :surface_kind, :local_subprocess)
+    do: normalize_surface_kind(Keyword.get(surface, :surface_kind, :local_subprocess))
+
+  defp execution_surface_kind(surface) when is_map(surface) do
+    surface
+    |> Map.get(:surface_kind, Map.get(surface, "surface_kind", :local_subprocess))
+    |> normalize_surface_kind()
+  end
 
   defp execution_surface_kind(_surface), do: :local_subprocess
+
+  defp normalize_surface_kind("local_subprocess"), do: :local_subprocess
+  defp normalize_surface_kind("ssh_exec"), do: :ssh_exec
+  defp normalize_surface_kind("guest_bridge"), do: :guest_bridge
+  defp normalize_surface_kind(surface_kind) when is_atom(surface_kind), do: surface_kind
+  defp normalize_surface_kind(_surface_kind), do: :local_subprocess
 end

@@ -17,11 +17,11 @@ Use `:spawned` when the BEAM owns the service process.
 
 Characteristics:
 
-- runtime process is started through `external_runtime_transport`
+- runtime process is started through `execution_plane`
 - stdout and stderr can participate in readiness interpretation
 - transport exit is part of lifecycle truth
 - `management_mode` resolves to `:jido_managed`
-- the startup plan must include a transport-owned process surface
+- the startup plan must include an Execution Plane-owned process surface
 
 Good fits:
 
@@ -61,8 +61,8 @@ practice that means:
   plan
 - requested or planned execution surfaces must stay within the backend
   manifest's `supported_surfaces`
-- `:spawned` plans must carry a transport because the BEAM is claiming process
-  ownership
+- `:spawned` plans must carry lower Execution Plane process transport because
+  the BEAM is claiming process ownership
 
 ## Shared Output Surface
 

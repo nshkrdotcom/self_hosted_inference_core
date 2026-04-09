@@ -14,7 +14,7 @@ defmodule SelfHostedInferenceCore.InstanceSpec do
           contract_version: String.t(),
           backend: atom(),
           startup_kind: :spawned | :attach_existing_service | nil,
-          execution_surface: keyword() | ExternalRuntimeTransport.ExecutionSurface.t() | nil,
+          execution_surface: keyword() | map() | ExecutionPlane.Placements.Surface.t() | nil,
           backend_options: map(),
           metadata: map()
         }

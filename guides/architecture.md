@@ -7,7 +7,7 @@ services. It sits between the raw placement substrate and backend-specific
 service adapters.
 
 ```text
-external_runtime_transport
+execution_plane
   -> self_hosted_inference_core
   -> backend package or attach adapter
   -> jido_integration / req_llm consumers
@@ -23,7 +23,7 @@ The kernel is intentionally narrow:
 
 ## Ownership Boundaries
 
-### `external_runtime_transport`
+### `execution_plane`
 
 Transport ownership stays below the kernel:
 
@@ -107,3 +107,5 @@ Keeping the kernel separate prevents two common architecture failures:
 
 - transport logic leaking upward into backend or control-plane code
 - client/request logic leaking downward into service lifecycle code
+- durable service descriptor, lease, and attachability meaning collapsing into
+  lower process state

@@ -1,7 +1,7 @@
 defmodule SelfHostedInferenceCore.TestSupport.SpawnedBackend do
   @moduledoc false
 
-  alias ExternalRuntimeTransport.Command
+  alias ExecutionPlane.Command
 
   alias SelfHostedInferenceCore.{
     Backend,
