@@ -46,12 +46,27 @@ defmodule SelfHostedInferenceCore.MixProject do
   end
 
   defp execution_plane_dep do
-    path = Path.expand("../execution_plane", __DIR__)
+    resolve_local_or_git_dep(
+      :execution_plane,
+      "EXECUTION_PLANE_PATH",
+      "../execution_plane",
+      [github: "nshkrdotcom/execution_plane", branch: "main"],
+      override: true
+    )
+  end
+
+  defp resolve_local_or_git_dep(app, env_var, sibling_relative_path, fallback_opts, opts) do
+    path =
+      case System.get_env(env_var) do
+        nil -> Path.expand(sibling_relative_path, __DIR__)
+        "" -> Path.expand(sibling_relative_path, __DIR__)
+        configured -> Path.expand(configured)
+      end
 
     if File.dir?(path) do
-      {:execution_plane, path: path, override: true}
+      {app, Keyword.merge([path: path], opts)}
     else
-      {:execution_plane, "~> 0.1.0"}
+      {app, Keyword.merge(fallback_opts, opts)}
     end
   end
 
