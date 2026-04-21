@@ -127,7 +127,8 @@ defmodule SelfHostedInferenceCore.MixProject do
         "Public API": [
           SelfHostedInferenceCore,
           SelfHostedInferenceCore.Backend,
-          SelfHostedInferenceCore.Ollama
+          SelfHostedInferenceCore.Ollama,
+          SelfHostedInferenceCore.Simulation
         ],
         Contracts: [
           SelfHostedInferenceCore.InstanceSpec,
@@ -136,7 +137,8 @@ defmodule SelfHostedInferenceCore.MixProject do
           SelfHostedInferenceCore.ConsumerManifest,
           SelfHostedInferenceCore.CompatibilityResult,
           SelfHostedInferenceCore.LeaseRef,
-          SelfHostedInferenceCore.Ollama.AttachSpec
+          SelfHostedInferenceCore.Ollama.AttachSpec,
+          SelfHostedInferenceCore.Simulation.Manifest
         ],
         "Runtime Types": [
           SelfHostedInferenceCore.RuntimeSnapshot,

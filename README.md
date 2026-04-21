@@ -53,6 +53,8 @@ Two backend shapes are now proved:
 
 - built-in attach adapter: `SelfHostedInferenceCore.Ollama`
 - concrete spawned backend package: `llama_cpp_sdk`
+- built-in service-mode simulation backend:
+  `SelfHostedInferenceCore.Simulation`
 
 `SelfHostedInferenceCore.Ollama` proves the first truthful
 `management_mode: :externally_managed` path.
@@ -71,6 +73,13 @@ endpoint contract used by the spawned path.
 
 That keeps the kernel generic while proving both ownership shapes on real
 backends.
+
+`SelfHostedInferenceCore.Simulation` is the built-in PRELIM service-mode
+simulation backend. It is selected by application configuration and a backend
+manifest, uses Execution Plane's `:lower_simulation` process transport, and
+publishes normal endpoint, readiness, health, and lease contracts without
+launching a real backend process. It is not selected through a public
+`simulation:` request option.
 
 ## Startup Kinds
 
