@@ -56,6 +56,7 @@ defmodule SelfHostedInferenceCore.Simulation.Manifest do
   @spec fetch_active() :: {:ok, t()} | {:error, term()}
   def fetch_active do
     with {:ok, config} <- simulation_backend_config(),
+         :ok <- reject_public_simulation_selector(config),
          {:ok, manifest_ref} <- required_string(config, :active_manifest_ref),
          {:ok, attrs} <- fetch_configured_manifest(config, manifest_ref),
          {:ok, manifest} <- new(Map.put_new(attrs, :manifest_ref, manifest_ref)),
@@ -69,7 +70,8 @@ defmodule SelfHostedInferenceCore.Simulation.Manifest do
   def new(attrs) when is_list(attrs), do: attrs |> Map.new() |> new()
 
   def new(attrs) when is_map(attrs) do
-    with {:ok, manifest_ref} <- required_string(attrs, :manifest_ref),
+    with :ok <- reject_public_simulation_selector(attrs),
+         {:ok, manifest_ref} <- required_string(attrs, :manifest_ref),
          {:ok, scenario_ref} <- required_string(attrs, :scenario_ref),
          {:ok, deterministic_response} <- deterministic_response(attrs),
          {:ok, base_url} <- base_url(attrs, manifest_ref),
@@ -137,6 +139,14 @@ defmodule SelfHostedInferenceCore.Simulation.Manifest do
       config when is_list(config) -> {:ok, Map.new(config)}
       config when is_map(config) -> {:ok, Map.new(config)}
       config -> {:error, {:invalid_simulation_backend_config, config}}
+    end
+  end
+
+  defp reject_public_simulation_selector(values) do
+    if Map.has_key?(values, :simulation) or Map.has_key?(values, "simulation") do
+      {:error, {:public_simulation_selector_forbidden, :self_hosted_inference_core}}
+    else
+      :ok
     end
   end
 
