@@ -72,42 +72,24 @@ defmodule SelfHostedInferenceCore.MixProject do
   end
 
   defp execution_plane_workspace_dep_path(relative_child_path) do
-    configured_root =
-      case System.get_env("EXECUTION_PLANE_PATH") do
-        nil -> "../execution_plane"
-        "" -> "../execution_plane"
-        configured -> configured
-      end
-
-    configured_root
+    "../execution_plane"
     |> Path.join(relative_child_path)
-    |> workspace_dep_path("SELF_HOSTED_INFERENCE_CORE_HEX_DEPS")
+    |> local_dep_path()
   end
 
-  defp workspace_dep_path(configured_path, force_hex_env) do
-    if prefer_workspace_paths?(force_hex_env) do
-      path = Path.expand(configured_path, __DIR__)
+  defp local_dep_path(relative_path) do
+    if local_workspace_deps?() do
+      path = Path.expand(relative_path, __DIR__)
       if File.dir?(path), do: path
     end
   end
 
-  defp prefer_workspace_paths?(force_hex_env) do
-    workspace_paths_forced?(force_hex_env) or
-      (not release_deps_forced?(force_hex_env) and not Enum.member?(Path.split(__DIR__), "deps"))
+  defp local_workspace_deps? do
+    not hex_packaging_task?() and not Enum.member?(Path.split(__DIR__), "deps")
   end
 
-  defp release_deps_forced?(force_hex_env) do
-    force_hex_deps?(force_hex_env) or
-      Enum.any?(System.argv(), &(&1 in ["hex.build", "hex.publish"]))
-  end
-
-  defp workspace_paths_forced?(force_hex_env) do
-    not force_hex_deps?(force_hex_env) and
-      System.get_env("FORCE_WORKSPACE_PATH_DEPS") in ["1", "true", "TRUE", "yes", "YES"]
-  end
-
-  defp force_hex_deps?(force_hex_env) do
-    System.get_env(force_hex_env) in ["1", "true", "TRUE", "yes", "YES"]
+  defp hex_packaging_task? do
+    Enum.any?(System.argv(), &(&1 in ["hex.build", "hex.publish"]))
   end
 
   defp package do
