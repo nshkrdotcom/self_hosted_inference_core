@@ -4,6 +4,7 @@ defmodule SelfHostedInferenceCore.MixProject do
   @version "0.1.0"
   @source_url "https://github.com/nshkrdotcom/self_hosted_inference_core"
   @homepage_url "https://hex.pm/packages/self_hosted_inference_core"
+  @execution_plane_version "~> 0.1.0"
 
   def project do
     [
@@ -46,28 +47,43 @@ defmodule SelfHostedInferenceCore.MixProject do
   end
 
   defp execution_plane_dep do
-    resolve_local_or_git_dep(
-      :execution_plane,
-      "EXECUTION_PLANE_PATH",
-      "../execution_plane",
-      [github: "nshkrdotcom/execution_plane", branch: "main"],
-      override: true
-    )
+    case workspace_dep_path("../execution_plane", "SELF_HOSTED_INFERENCE_CORE_HEX_DEPS") do
+      nil -> {:execution_plane, @execution_plane_version}
+      path -> {:execution_plane, path: path}
+    end
   end
 
-  defp resolve_local_or_git_dep(app, env_var, sibling_relative_path, fallback_opts, opts) do
-    path =
-      case System.get_env(env_var) do
-        nil -> Path.expand(sibling_relative_path, __DIR__)
-        "" -> Path.expand(sibling_relative_path, __DIR__)
-        configured -> Path.expand(configured)
+  defp workspace_dep_path(relative_path, force_hex_env) do
+    configured_path =
+      case System.get_env("EXECUTION_PLANE_PATH") do
+        nil -> relative_path
+        "" -> relative_path
+        configured -> configured
       end
 
-    if File.dir?(path) do
-      {app, Keyword.merge([path: path], opts)}
-    else
-      {app, Keyword.merge(fallback_opts, opts)}
+    if prefer_workspace_paths?(force_hex_env) do
+      path = Path.expand(configured_path, __DIR__)
+      if File.dir?(path), do: path
     end
+  end
+
+  defp prefer_workspace_paths?(force_hex_env) do
+    workspace_paths_forced?(force_hex_env) or
+      (not release_deps_forced?(force_hex_env) and not Enum.member?(Path.split(__DIR__), "deps"))
+  end
+
+  defp release_deps_forced?(force_hex_env) do
+    force_hex_deps?(force_hex_env) or
+      Enum.any?(System.argv(), &(&1 in ["hex.build", "hex.publish"]))
+  end
+
+  defp workspace_paths_forced?(force_hex_env) do
+    not force_hex_deps?(force_hex_env) and
+      System.get_env("FORCE_WORKSPACE_PATH_DEPS") in ["1", "true", "TRUE", "yes", "YES"]
+  end
+
+  defp force_hex_deps?(force_hex_env) do
+    System.get_env(force_hex_env) in ["1", "true", "TRUE", "yes", "YES"]
   end
 
   defp package do
