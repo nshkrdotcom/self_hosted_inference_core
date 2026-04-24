@@ -4,7 +4,9 @@ defmodule SelfHostedInferenceCore.MixProject do
   @version "0.1.0"
   @source_url "https://github.com/nshkrdotcom/self_hosted_inference_core"
   @homepage_url "https://hex.pm/packages/self_hosted_inference_core"
-  @execution_plane_version "~> 0.1.0"
+  @execution_plane_contracts_version "~> 0.1.0"
+  @execution_plane_local_version "~> 0.1.0"
+  @execution_plane_process_version "~> 0.1.0"
 
   def project do
     [
@@ -39,28 +41,50 @@ defmodule SelfHostedInferenceCore.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      execution_plane_dep(),
+      execution_plane_contracts_dep(),
+      execution_plane_local_dep(),
+      execution_plane_process_dep(),
       {:ex_doc, "~> 0.40", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: :dev, runtime: false}
     ]
   end
 
-  defp execution_plane_dep do
-    case workspace_dep_path("../execution_plane", "SELF_HOSTED_INFERENCE_CORE_HEX_DEPS") do
-      nil -> {:execution_plane, @execution_plane_version}
-      path -> {:execution_plane, path: path}
+  defp execution_plane_contracts_dep do
+    case execution_plane_workspace_dep_path("core/execution_plane_contracts") do
+      nil -> {:execution_plane_contracts, @execution_plane_contracts_version}
+      path -> {:execution_plane_contracts, path: path}
     end
   end
 
-  defp workspace_dep_path(relative_path, force_hex_env) do
-    configured_path =
+  defp execution_plane_local_dep do
+    case execution_plane_workspace_dep_path("placements/execution_plane_local") do
+      nil -> {:execution_plane_local, @execution_plane_local_version}
+      path -> {:execution_plane_local, path: path}
+    end
+  end
+
+  defp execution_plane_process_dep do
+    case execution_plane_workspace_dep_path("runtimes/execution_plane_process") do
+      nil -> {:execution_plane_process, @execution_plane_process_version}
+      path -> {:execution_plane_process, path: path}
+    end
+  end
+
+  defp execution_plane_workspace_dep_path(relative_child_path) do
+    configured_root =
       case System.get_env("EXECUTION_PLANE_PATH") do
-        nil -> relative_path
-        "" -> relative_path
+        nil -> "../execution_plane"
+        "" -> "../execution_plane"
         configured -> configured
       end
 
+    configured_root
+    |> Path.join(relative_child_path)
+    |> workspace_dep_path("SELF_HOSTED_INFERENCE_CORE_HEX_DEPS")
+  end
+
+  defp workspace_dep_path(configured_path, force_hex_env) do
     if prefer_workspace_paths?(force_hex_env) do
       path = Path.expand(configured_path, __DIR__)
       if File.dir?(path), do: path
