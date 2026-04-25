@@ -49,7 +49,7 @@ defmodule SelfHostedInferenceCore.MixProject do
   end
 
   defp execution_plane_dep do
-    case local_dep_path("../execution_plane") do
+    case local_dep_path("../execution_plane/core/execution_plane") do
       nil -> {:execution_plane, @execution_plane_version}
       path -> {:execution_plane, path: path}
     end
