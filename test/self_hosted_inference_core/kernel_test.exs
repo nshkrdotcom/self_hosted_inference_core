@@ -113,6 +113,68 @@ defmodule SelfHostedInferenceCore.KernelTest do
              SelfHostedInferenceCore.ensure_endpoint(request, req_llm_consumer(), context)
   end
 
+  test "ensure_endpoint/3 resolves backend strings through registered backend ids" do
+    request = %{
+      request_id: "req-self-hosted-wrapper-string-backend",
+      target_preference: %{
+        backend: "test_spawned_backend",
+        startup_kind: "spawned",
+        backend_options: %{model_identity: "wrapper-string-backend-model"}
+      }
+    }
+
+    context = %{
+      run_id: "run-self-hosted-wrapper-string-backend",
+      attempt_id: "run-self-hosted-wrapper-string-backend:1"
+    }
+
+    assert {:ok, %EndpointDescriptor{} = endpoint, %CompatibilityResult{} = compatibility} =
+             SelfHostedInferenceCore.ensure_endpoint(
+               request,
+               req_llm_consumer(),
+               context,
+               owner_ref: "owner-wrapper-string-backend",
+               ttl_ms: 5_000
+             )
+
+    assert endpoint.management_mode == :jido_managed
+    assert compatibility.compatible?
+  end
+
+  test "ensure_endpoint/3 rejects unknown backend strings before runtime lookup" do
+    request = %{
+      request_id: "req-self-hosted-wrapper-unknown-backend",
+      target_preference: %{
+        backend: "not_registered_backend",
+        backend_options: %{model_identity: "wrapper-unknown-backend-model"}
+      }
+    }
+
+    context = %{
+      run_id: "run-self-hosted-wrapper-unknown-backend",
+      attempt_id: "run-self-hosted-wrapper-unknown-backend:1"
+    }
+
+    assert {:error, {:unknown_backend_id, "not_registered_backend"}} =
+             SelfHostedInferenceCore.ensure_endpoint(request, req_llm_consumer(), context)
+  end
+
+  test "ensure_instance/2 rejects execution surface maps with unknown keys" do
+    spec =
+      InstanceSpec.new!(
+        backend: :test_spawned_backend,
+        execution_surface: %{
+          "surface_kind" => "local_subprocess",
+          "target_id" => "local-runtime",
+          "unexpected_surface_key" => "reject"
+        },
+        backend_options: %{model_identity: "runtime-contract-invalid-surface-key"}
+      )
+
+    assert {:error, {:invalid_execution_surface_option, "unexpected_surface_key"}} =
+             SelfHostedInferenceCore.ensure_instance(spec)
+  end
+
   test "spawned instances publish endpoints and reuse compatible leases" do
     spec =
       InstanceSpec.new!(

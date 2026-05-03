@@ -190,9 +190,15 @@ defmodule SelfHostedInferenceCore.Examples.FakeOllamaService do
   end
 
   defp extract_json_string(body, key) when is_binary(body) do
-    case Regex.run(~r/"#{Regex.escape(key)}"\s*:\s*"([^"]*)"/, body) do
-      [_, value] -> value
-      _no_match -> nil
+    case Jason.decode(body) do
+      {:ok, decoded} when is_map(decoded) ->
+        case Map.get(decoded, key) do
+          value when is_binary(value) -> value
+          _other -> nil
+        end
+
+      _other ->
+        nil
     end
   end
 

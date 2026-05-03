@@ -97,9 +97,9 @@ defmodule SelfHostedInferenceCore.TestSupport.ExternalService do
       {^port, {:data, data}} ->
         next_buffer = buffer <> data
 
-        case Regex.run(~r/READY\s+([^\n\r]+)/, next_buffer) do
-          [_, state_dir] -> {:ok, String.trim(state_dir)}
-          _no_match -> await_ready(port, next_buffer, attempts - 1)
+        case ready_state_dir(next_buffer) do
+          nil -> await_ready(port, next_buffer, attempts - 1)
+          state_dir -> {:ok, state_dir}
         end
 
       {^port, {:exit_status, status}} ->
@@ -109,6 +109,28 @@ defmodule SelfHostedInferenceCore.TestSupport.ExternalService do
         await_ready(port, buffer, attempts - 1)
     end
   end
+
+  defp ready_state_dir(buffer) do
+    case :binary.match(buffer, "READY ") do
+      {start, ready_size} ->
+        after_ready_start = start + ready_size
+
+        after_ready =
+          binary_part(buffer, after_ready_start, byte_size(buffer) - after_ready_start)
+
+        after_ready
+        |> String.split(["\n", "\r"], parts: 2)
+        |> List.first()
+        |> String.trim()
+        |> non_empty()
+
+      :nomatch ->
+        nil
+    end
+  end
+
+  defp non_empty(""), do: nil
+  defp non_empty(value), do: value
 
   defp script_path do
     Path.expand("fixtures/fake_openai_service.exs", __DIR__)

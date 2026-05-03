@@ -96,10 +96,13 @@ defmodule SelfHostedInferenceCore.Compatibility do
   defp capability_satisfied?(actual, expected), do: actual == expected
 
   defp normalize_requirement_key(key) when is_atom(key) do
-    key
-    |> Atom.to_string()
-    |> String.trim_trailing("?")
-    |> String.to_atom()
+    case key do
+      :streaming? -> :streaming
+      :tool_calling? -> :tool_calling
+      :embeddings? -> :embeddings
+      :deterministic_response? -> :deterministic_response
+      _unknown -> :capability
+    end
   end
 
   defp normalize_requirement_key(_key), do: :capability

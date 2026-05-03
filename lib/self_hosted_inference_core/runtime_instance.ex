@@ -439,31 +439,61 @@ defmodule SelfHostedInferenceCore.RuntimeInstance do
     surface
     |> Map.from_struct()
     |> Map.delete(:__struct__)
-    |> Map.update!(:surface_kind, &normalize_surface_kind/1)
-    |> Enum.reject(fn {_key, value} -> is_nil(value) or value == [] or value == %{} end)
-    |> Enum.into([])
+    |> map_execution_surface_opts()
   end
 
-  defp execution_surface_opts(surface) when is_map(surface) do
+  defp execution_surface_opts(surface) when is_map(surface),
+    do: map_execution_surface_opts(surface)
+
+  defp execution_surface_opts(opts) when is_list(opts), do: opts
+
+  defp map_execution_surface_opts(surface) when is_map(surface) do
     surface
-    |> Map.new(fn
-      {:__struct__, _value} -> nil
-      {"surface_kind", value} -> {:surface_kind, normalize_surface_kind(value)}
-      {:surface_kind, value} -> {:surface_kind, normalize_surface_kind(value)}
-      {key, value} when is_binary(key) -> {String.to_existing_atom(key), value}
-      pair -> pair
-    end)
+    |> Enum.map(&normalize_execution_surface_option!/1)
     |> Enum.reject(fn
       nil -> true
       {_key, value} -> is_nil(value) or value == [] or value == %{}
     end)
+    |> Enum.into([])
   end
 
-  defp execution_surface_opts(opts) when is_list(opts), do: opts
+  defp normalize_execution_surface_option!({:__struct__, _value}), do: nil
+
+  defp normalize_execution_surface_option!({key, value}) do
+    case execution_surface_option_key(key) do
+      nil ->
+        raise ArgumentError, "unsupported execution surface option: #{inspect(key)}"
+
+      :surface_kind ->
+        {:surface_kind, normalize_surface_kind(value)}
+
+      normalized_key ->
+        {normalized_key, value}
+    end
+  end
+
+  defp execution_surface_option_key(:contract_version), do: :contract_version
+  defp execution_surface_option_key("contract_version"), do: :contract_version
+  defp execution_surface_option_key(:surface_kind), do: :surface_kind
+  defp execution_surface_option_key("surface_kind"), do: :surface_kind
+  defp execution_surface_option_key(:transport_options), do: :transport_options
+  defp execution_surface_option_key("transport_options"), do: :transport_options
+  defp execution_surface_option_key(:target_id), do: :target_id
+  defp execution_surface_option_key("target_id"), do: :target_id
+  defp execution_surface_option_key(:lease_ref), do: :lease_ref
+  defp execution_surface_option_key("lease_ref"), do: :lease_ref
+  defp execution_surface_option_key(:surface_ref), do: :surface_ref
+  defp execution_surface_option_key("surface_ref"), do: :surface_ref
+  defp execution_surface_option_key(:boundary_class), do: :boundary_class
+  defp execution_surface_option_key("boundary_class"), do: :boundary_class
+  defp execution_surface_option_key(:observability), do: :observability
+  defp execution_surface_option_key("observability"), do: :observability
+  defp execution_surface_option_key(_key), do: nil
 
   defp normalize_surface_kind("local_subprocess"), do: :local_subprocess
   defp normalize_surface_kind("ssh_exec"), do: :ssh_exec
   defp normalize_surface_kind("guest_bridge"), do: :guest_bridge
+  defp normalize_surface_kind("lower_simulation"), do: :lower_simulation
   defp normalize_surface_kind(value) when is_atom(value), do: value
   defp normalize_surface_kind(_value), do: :local_subprocess
 

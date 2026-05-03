@@ -181,7 +181,16 @@ defmodule SelfHostedInferenceCore do
 
   defp normalize_request_instance_spec(request, context) do
     with {:ok, target_preference} <- fetch_target_preference(request),
-         {:ok, backend} <- fetch_target_preference_field(target_preference, :backend) do
+         {:ok, raw_backend} <- fetch_target_preference_field(target_preference, :backend),
+         {:ok, backend} <- normalize_backend_id(raw_backend),
+         {:ok, startup_kind} <-
+           target_preference
+           |> optional_target_preference_field(:startup_kind)
+           |> normalize_startup_kind(),
+         {:ok, execution_surface} <-
+           target_preference
+           |> optional_target_preference_field(:execution_surface)
+           |> normalize_execution_surface() do
       metadata =
         target_preference
         |> optional_target_preference_map(:metadata, %{})
@@ -195,9 +204,8 @@ defmodule SelfHostedInferenceCore do
 
       InstanceSpec.new(
         backend: backend,
-        startup_kind: optional_target_preference_field(target_preference, :startup_kind),
-        execution_surface:
-          optional_target_preference_field(target_preference, :execution_surface),
+        startup_kind: startup_kind,
+        execution_surface: execution_surface,
         backend_options: backend_options,
         metadata: metadata
       )
@@ -228,6 +236,36 @@ defmodule SelfHostedInferenceCore do
       nil -> default
       %{} = value -> Map.new(value)
       value -> raise ArgumentError, "#{field} must be a map, got: #{inspect(value)}"
+    end
+  end
+
+  defp normalize_backend_id(backend) when is_atom(backend), do: {:ok, backend}
+
+  defp normalize_backend_id(backend) when is_binary(backend) do
+    backend =
+      backend
+      |> String.trim()
+
+    case Enum.find(list_backends(), &(Atom.to_string(&1.backend) == backend)) do
+      %BackendManifest{backend: backend_id} -> {:ok, backend_id}
+      nil -> {:error, {:unknown_backend_id, backend}}
+    end
+  end
+
+  defp normalize_backend_id(backend), do: {:error, {:invalid_backend_id, backend}}
+
+  defp normalize_startup_kind(nil), do: {:ok, nil}
+  defp normalize_startup_kind(:spawned), do: {:ok, :spawned}
+  defp normalize_startup_kind(:attach_existing_service), do: {:ok, :attach_existing_service}
+  defp normalize_startup_kind("spawned"), do: {:ok, :spawned}
+  defp normalize_startup_kind("attach_existing_service"), do: {:ok, :attach_existing_service}
+  defp normalize_startup_kind(value), do: {:error, {:invalid_startup_kind, value}}
+
+  defp normalize_execution_surface(nil), do: {:ok, nil}
+
+  defp normalize_execution_surface(execution_surface) do
+    with :ok <- validate_execution_surface_options(execution_surface) do
+      {:ok, execution_surface}
     end
   end
 
@@ -293,6 +331,8 @@ defmodule SelfHostedInferenceCore do
          :ok <- validate_manifest_startup_kind(manifest, plan),
          :ok <- validate_management_mode(plan),
          :ok <- validate_transport_ownership(plan),
+         :ok <- validate_execution_surface_options(spec.execution_surface),
+         :ok <- validate_transport_execution_surface_options(plan),
          :ok <- validate_execution_surface_support(spec, manifest, plan) do
       validate_manifest_management_mode(manifest, plan)
     end
@@ -374,6 +414,80 @@ defmodule SelfHostedInferenceCore do
 
   defp validate_transport_ownership(%Backend.StartupPlan{}), do: :ok
 
+  defp validate_transport_execution_surface_options(%Backend.StartupPlan{
+         transport: %Backend.TransportPlan{execution_surface: execution_surface}
+       }) do
+    validate_execution_surface_options(execution_surface)
+  end
+
+  defp validate_transport_execution_surface_options(%Backend.StartupPlan{}), do: :ok
+
+  defp validate_execution_surface_options(nil), do: :ok
+  defp validate_execution_surface_options(%ExecutionPlane.Placements.Surface{}), do: :ok
+
+  defp validate_execution_surface_options(options) when is_list(options) do
+    if Keyword.keyword?(options) do
+      validate_execution_surface_pairs(options)
+    else
+      {:error, {:invalid_execution_surface, options}}
+    end
+  end
+
+  defp validate_execution_surface_options(options) when is_map(options) do
+    options
+    |> Map.delete(:__struct__)
+    |> validate_execution_surface_pairs()
+  end
+
+  defp validate_execution_surface_options(_options), do: :ok
+
+  defp validate_execution_surface_pairs(pairs) do
+    Enum.reduce_while(pairs, :ok, &validate_execution_surface_pair/2)
+  end
+
+  defp validate_execution_surface_pair({key, value}, :ok) do
+    key
+    |> execution_surface_option_key()
+    |> validate_execution_surface_key(key, value)
+  end
+
+  defp validate_execution_surface_key(nil, key, _value),
+    do: {:halt, {:error, {:invalid_execution_surface_option, key}}}
+
+  defp validate_execution_surface_key(:surface_kind, _key, value),
+    do: continue_or_halt(validate_surface_kind_value(value))
+
+  defp validate_execution_surface_key(_known_key, _key, _value), do: {:cont, :ok}
+
+  defp continue_or_halt(:ok), do: {:cont, :ok}
+  defp continue_or_halt({:error, reason}), do: {:halt, {:error, reason}}
+
+  defp execution_surface_option_key(:contract_version), do: :contract_version
+  defp execution_surface_option_key("contract_version"), do: :contract_version
+  defp execution_surface_option_key(:surface_kind), do: :surface_kind
+  defp execution_surface_option_key("surface_kind"), do: :surface_kind
+  defp execution_surface_option_key(:transport_options), do: :transport_options
+  defp execution_surface_option_key("transport_options"), do: :transport_options
+  defp execution_surface_option_key(:target_id), do: :target_id
+  defp execution_surface_option_key("target_id"), do: :target_id
+  defp execution_surface_option_key(:lease_ref), do: :lease_ref
+  defp execution_surface_option_key("lease_ref"), do: :lease_ref
+  defp execution_surface_option_key(:surface_ref), do: :surface_ref
+  defp execution_surface_option_key("surface_ref"), do: :surface_ref
+  defp execution_surface_option_key(:boundary_class), do: :boundary_class
+  defp execution_surface_option_key("boundary_class"), do: :boundary_class
+  defp execution_surface_option_key(:observability), do: :observability
+  defp execution_surface_option_key("observability"), do: :observability
+  defp execution_surface_option_key(_key), do: nil
+
+  defp validate_surface_kind_value(nil), do: :ok
+  defp validate_surface_kind_value(value) when is_atom(value), do: :ok
+  defp validate_surface_kind_value("local_subprocess"), do: :ok
+  defp validate_surface_kind_value("ssh_exec"), do: :ok
+  defp validate_surface_kind_value("guest_bridge"), do: :ok
+  defp validate_surface_kind_value("lower_simulation"), do: :ok
+  defp validate_surface_kind_value(value), do: {:error, {:invalid_execution_surface_kind, value}}
+
   defp validate_execution_surface_support(
          %InstanceSpec{} = spec,
          %BackendManifest{backend: backend, supported_surfaces: supported_surfaces},
@@ -437,6 +551,7 @@ defmodule SelfHostedInferenceCore do
   defp normalize_surface_kind("local_subprocess"), do: :local_subprocess
   defp normalize_surface_kind("ssh_exec"), do: :ssh_exec
   defp normalize_surface_kind("guest_bridge"), do: :guest_bridge
+  defp normalize_surface_kind("lower_simulation"), do: :lower_simulation
   defp normalize_surface_kind(surface_kind) when is_atom(surface_kind), do: surface_kind
   defp normalize_surface_kind(_surface_kind), do: :local_subprocess
 end

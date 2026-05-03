@@ -153,7 +153,7 @@ defmodule SelfHostedInferenceCore.Simulation.Manifest do
   defp fetch_configured_manifest(config, manifest_ref) do
     case value(config, :manifests, %{}) do
       manifests when is_list(manifests) or is_map(manifests) ->
-        manifests = Map.new(manifests)
+        manifests = normalize_manifest_registry(manifests)
         manifests |> lookup_manifest(manifest_ref) |> normalize_manifest_attrs(manifest_ref)
 
       other ->
@@ -162,8 +162,15 @@ defmodule SelfHostedInferenceCore.Simulation.Manifest do
   end
 
   defp lookup_manifest(manifests, manifest_ref) do
-    Map.get(manifests, manifest_ref) || Map.get(manifests, existing_atom(manifest_ref))
+    Map.get(manifests, manifest_ref)
   end
+
+  defp normalize_manifest_registry(manifests) do
+    Enum.into(manifests, %{}, fn {key, attrs} -> {manifest_registry_key(key), attrs} end)
+  end
+
+  defp manifest_registry_key(key) when is_atom(key), do: Atom.to_string(key)
+  defp manifest_registry_key(key), do: to_string(key)
 
   defp normalize_manifest_attrs(nil, manifest_ref) do
     {:error, {:simulation_manifest_not_configured, manifest_ref}}
@@ -283,11 +290,25 @@ defmodule SelfHostedInferenceCore.Simulation.Manifest do
 
   defp atom_value(attrs, key, default) do
     case value(attrs, key, default) do
-      value when is_atom(value) -> {:ok, value}
-      value when is_binary(value) and value != "" -> existing_atom_value(key, value)
+      value when is_atom(value) -> bounded_atom_value(key, value)
+      value when is_binary(value) and value != "" -> bounded_atom_value(key, value)
       other -> {:error, {:invalid_atom_value, key, other}}
     end
   end
+
+  defp bounded_atom_value(:protocol, :openai_chat_completions),
+    do: {:ok, :openai_chat_completions}
+
+  defp bounded_atom_value(:protocol, "openai_chat_completions"),
+    do: {:ok, :openai_chat_completions}
+
+  defp bounded_atom_value(:health_status, value) when value in @supported_health_statuses,
+    do: {:ok, value}
+
+  defp bounded_atom_value(:health_status, "healthy"), do: {:ok, :healthy}
+  defp bounded_atom_value(:health_status, "degraded"), do: {:ok, :degraded}
+  defp bounded_atom_value(:health_status, "unavailable"), do: {:ok, :unavailable}
+  defp bounded_atom_value(key, value), do: {:error, {:invalid_atom_value, key, value}}
 
   defp map_value(attrs, key, default) do
     case value(attrs, key, default) do
@@ -307,22 +328,66 @@ defmodule SelfHostedInferenceCore.Simulation.Manifest do
     Map.get(attrs, key, Map.get(attrs, Atom.to_string(key), default))
   end
 
-  defp existing_atom(value) when is_binary(value) do
-    String.to_existing_atom(value)
-  rescue
-    ArgumentError -> nil
-  end
-
-  defp existing_atom_value(key, value) when is_binary(value) do
-    {:ok, String.to_existing_atom(value)}
-  rescue
-    ArgumentError -> {:error, {:invalid_atom_value, key, value}}
-  end
-
   defp slug(value) do
     value
     |> String.downcase()
-    |> String.replace(~r/[^a-z0-9_-]+/, "-")
+    |> String.graphemes()
+    |> Enum.reduce({[], false}, &slug_grapheme/2)
+    |> elem(0)
+    |> Enum.reverse()
+    |> Enum.join()
     |> String.trim("-")
   end
+
+  defp slug_grapheme(grapheme, {parts, _replacing?}) when grapheme in ["_", "-"],
+    do: {[grapheme | parts], false}
+
+  defp slug_grapheme(grapheme, {parts, _replacing?})
+       when grapheme in [
+              "0",
+              "1",
+              "2",
+              "3",
+              "4",
+              "5",
+              "6",
+              "7",
+              "8",
+              "9"
+            ],
+       do: {[grapheme | parts], false}
+
+  defp slug_grapheme(grapheme, {parts, _replacing?})
+       when grapheme in [
+              "a",
+              "b",
+              "c",
+              "d",
+              "e",
+              "f",
+              "g",
+              "h",
+              "i",
+              "j",
+              "k",
+              "l",
+              "m",
+              "n",
+              "o",
+              "p",
+              "q",
+              "r",
+              "s",
+              "t",
+              "u",
+              "v",
+              "w",
+              "x",
+              "y",
+              "z"
+            ],
+       do: {[grapheme | parts], false}
+
+  defp slug_grapheme(_grapheme, {parts, true}), do: {parts, true}
+  defp slug_grapheme(_grapheme, {parts, false}), do: {["-" | parts], true}
 end
