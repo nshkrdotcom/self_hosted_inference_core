@@ -11,6 +11,7 @@ defmodule SelfHostedInferenceCore do
     CompatibilityResult,
     ConsumerManifest,
     EndpointDescriptor,
+    GovernedAuthority,
     InstanceSpec,
     LeaseRef,
     RuntimeInstance,
@@ -181,6 +182,8 @@ defmodule SelfHostedInferenceCore do
 
   defp normalize_request_instance_spec(request, context) do
     with {:ok, target_preference} <- fetch_target_preference(request),
+         {:ok, target_preference} <-
+           maybe_materialize_governed_target_preference(target_preference),
          {:ok, raw_backend} <- fetch_target_preference_field(target_preference, :backend),
          {:ok, backend} <- normalize_backend_id(raw_backend),
          {:ok, startup_kind} <-
@@ -217,6 +220,21 @@ defmodule SelfHostedInferenceCore do
       %{} = target_preference -> {:ok, Map.new(target_preference)}
       nil -> {:error, {:missing_request_field, :target_preference}}
       other -> {:error, {:invalid_target_preference, other}}
+    end
+  end
+
+  defp maybe_materialize_governed_target_preference(target_preference) do
+    case GovernedAuthority.fetch(target_preference) do
+      :error ->
+        {:ok, target_preference}
+
+      {:ok, authority} ->
+        with :ok <- GovernedAuthority.reject_unmanaged_target_preference(target_preference) do
+          {:ok, GovernedAuthority.materialize_target_preference(authority, target_preference)}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 

@@ -3,6 +3,8 @@ defmodule SelfHostedInferenceCore.Ollama.AttachSpec do
   Typed attach contract for the built-in `ollama` backend.
   """
 
+  alias SelfHostedInferenceCore.GovernedAuthority
+
   @default_root_url "http://127.0.0.1:11434"
 
   defstruct contract_version: "inference.v1",
@@ -38,35 +40,37 @@ defmodule SelfHostedInferenceCore.Ollama.AttachSpec do
   def new(attrs) when is_list(attrs), do: new(Map.new(attrs))
 
   def new(attrs) when is_map(attrs) do
-    root_url =
-      attrs
-      |> get_value(:root_url, get_value(attrs, :base_url, default_root_url()))
-      |> normalize_root_url()
+    with {:ok, attrs} <- maybe_materialize_governed_authority(attrs) do
+      root_url =
+        attrs
+        |> get_value(:root_url, get_value(attrs, :base_url, default_root_url()))
+        |> normalize_root_url()
 
-    model_identity =
-      attrs
-      |> get_value(:model_identity, get_value(attrs, :model))
-      |> validate_required_string(:model_identity)
+      model_identity =
+        attrs
+        |> get_value(:model_identity, get_value(attrs, :model))
+        |> validate_required_string(:model_identity)
 
-    headers =
-      attrs
-      |> get_value(:headers, %{})
-      |> normalize_headers()
-      |> maybe_put_authorization(get_value(attrs, :api_key))
+      headers =
+        attrs
+        |> get_value(:headers, %{})
+        |> normalize_headers()
+        |> maybe_put_authorization(get_value(attrs, :api_key))
 
-    {:ok,
-     %__MODULE__{
-       root_url: root_url,
-       model_identity: model_identity,
-       api_key: normalize_optional_string(get_value(attrs, :api_key)),
-       headers: headers,
-       ollama_http: get_value(attrs, :ollama_http),
-       ready_timeout_ms: get_value(attrs, :ready_timeout_ms, 5_000),
-       readiness_interval_ms: get_value(attrs, :readiness_interval_ms, 100),
-       health_interval_ms: get_value(attrs, :health_interval_ms, 1_000),
-       execution_surface: get_value(attrs, :execution_surface),
-       metadata: Map.new(get_value(attrs, :metadata, %{}))
-     }}
+      {:ok,
+       %__MODULE__{
+         root_url: root_url,
+         model_identity: model_identity,
+         api_key: normalize_optional_string(get_value(attrs, :api_key)),
+         headers: headers,
+         ollama_http: get_value(attrs, :ollama_http),
+         ready_timeout_ms: get_value(attrs, :ready_timeout_ms, 5_000),
+         readiness_interval_ms: get_value(attrs, :readiness_interval_ms, 100),
+         health_interval_ms: get_value(attrs, :health_interval_ms, 1_000),
+         execution_surface: get_value(attrs, :execution_surface),
+         metadata: Map.new(get_value(attrs, :metadata, %{}))
+       }}
+    end
   rescue
     error in ArgumentError -> {:error, error.message}
   end
@@ -93,7 +97,7 @@ defmodule SelfHostedInferenceCore.Ollama.AttachSpec do
       %{
         root_url: spec.root_url,
         model_identity: spec.model_identity,
-        headers: spec.headers,
+        headers_fingerprint: fingerprint(spec.headers),
         execution_surface: execution_surface_identity(spec.execution_surface)
       }
       |> :erlang.term_to_binary()
@@ -112,6 +116,21 @@ defmodule SelfHostedInferenceCore.Ollama.AttachSpec do
 
   defp get_value(map, field, default \\ nil) when is_map(map) do
     Map.get(map, field, Map.get(map, Atom.to_string(field), default))
+  end
+
+  defp maybe_materialize_governed_authority(attrs) do
+    case GovernedAuthority.fetch(attrs) do
+      :error ->
+        {:ok, attrs}
+
+      {:ok, authority} ->
+        with :ok <- GovernedAuthority.reject_unmanaged_attach_attrs(attrs) do
+          {:ok, GovernedAuthority.materialize_attach_attrs(authority, attrs)}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   defp normalize_root_url(value) when is_binary(value) do
@@ -190,6 +209,13 @@ defmodule SelfHostedInferenceCore.Ollama.AttachSpec do
 
   defp maybe_put_authorization(headers, api_key) do
     Map.put(headers, "authorization", "Bearer " <> String.trim(to_string(api_key)))
+  end
+
+  defp fingerprint(value) do
+    value
+    |> :erlang.term_to_binary()
+    |> then(&:crypto.hash(:sha256, &1))
+    |> Base.url_encode64(padding: false)
   end
 
   defp execution_surface_identity(%ExecutionPlane.Placements.Surface{} = surface) do

@@ -39,6 +39,17 @@ Backend packages should not own:
 - control-plane durability
 - durable lease lineage above the service-runtime seam
 
+## Governed Request Materialization
+
+For standalone calls, request `target_preference` continues to carry backend
+selection, startup kind, execution surface, and backend options directly.
+
+For governed calls, `target_preference` carries only `governed_authority`.
+The authority packet materializes backend selection, startup kind, execution
+surface, backend options, target posture, attach grant, endpoint auth, and
+redaction refs. Direct authority-bearing `target_preference` fields are
+rejected with `{:unmanaged_governed_target_preference_field, field}`.
+
 Attach adapters that stay inside `self_hosted_inference_core` should follow
 the same ownership rules. They can own backend-specific readiness and health
 interpretation, but they still must not claim daemon ownership or drift into

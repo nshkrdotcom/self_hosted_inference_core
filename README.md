@@ -98,6 +98,28 @@ The kernel validates that backends keep startup kind, management mode, and
 substrate ownership truthful. It also rejects execution surfaces that are not
 declared in the backend manifest.
 
+## Governed Authority
+
+Standalone self-hosted inference keeps the existing local ergonomics:
+`Ollama.AttachSpec` accepts direct endpoint config, endpoint auth, and
+`OLLAMA_HOST` as the attach default when no root URL is supplied.
+
+Governed self-hosted inference is selected with
+`governed_authority: %SelfHostedInferenceCore.GovernedAuthority{}` or
+equivalent attrs. In that mode the kernel and built-in Ollama attach adapter
+materialize endpoint identity, service identity, target posture, attach grant,
+credential refs, endpoint auth, backend options, execution surface, and
+redaction refs only from the authority packet.
+
+When `governed_authority` is present, direct target-preference fields such as
+`backend`, `startup_kind`, `execution_surface`, `backend_options`,
+`boot_spec`, `attach_spec`, `metadata`, `root_url`, `api_key`, and `headers`
+are rejected. Direct Ollama attach fields such as `root_url`, `base_url`,
+`model_identity`, `api_key`, `headers`, `ollama_http`, `execution_surface`,
+and `metadata` are also rejected. Authority refs are copied into metadata, but
+materialized endpoint tokens are not copied into metadata, lease metadata, or
+instance ids.
+
 ## Installation
 
 Add the package to your dependency list:

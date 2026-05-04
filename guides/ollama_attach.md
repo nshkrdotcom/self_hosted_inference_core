@@ -66,6 +66,22 @@ Readiness stays attach-oriented:
 That keeps the route honest when the daemon is already running but the model is
 still being pulled or loaded.
 
+## Governed Attach
+
+Standalone attach specs accept direct `root_url`, `model_identity`, `api_key`,
+headers, and `OLLAMA_HOST` defaulting. Those fields preserve local Ollama
+ergonomics and do not satisfy governed authority.
+
+Governed attach specs pass `governed_authority` instead. The authority packet
+supplies the root URL, model identity, endpoint auth, execution surface, target
+posture, attach grant, credential refs, operation policy, and redaction refs.
+When it is present, direct attach fields that could carry endpoint auth,
+service identity, local service config, target posture, attach metadata, or a
+direct HTTP client are rejected with `{:unmanaged_governed_attach_field, field}`.
+
+The attach instance key uses a header fingerprint instead of raw header values,
+and governed metadata carries refs only.
+
 ## Health Interpretation
 
 Health stays truthful to attached-service semantics:
