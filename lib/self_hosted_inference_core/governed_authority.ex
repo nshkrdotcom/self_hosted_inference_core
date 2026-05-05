@@ -8,6 +8,8 @@ defmodule SelfHostedInferenceCore.GovernedAuthority do
   @required_refs [
     :endpoint_ref,
     :service_identity_ref,
+    :provider_account_ref,
+    :model_account_ref,
     :target_ref,
     :target_posture_ref,
     :attach_grant_ref,
@@ -54,6 +56,8 @@ defmodule SelfHostedInferenceCore.GovernedAuthority do
             startup_kind: :attach_existing_service,
             endpoint_ref: nil,
             service_identity_ref: nil,
+            provider_account_ref: nil,
+            model_account_ref: nil,
             target_ref: nil,
             target_posture_ref: nil,
             attach_grant_ref: nil,
@@ -78,6 +82,8 @@ defmodule SelfHostedInferenceCore.GovernedAuthority do
           startup_kind: :spawned | :attach_existing_service | nil,
           endpoint_ref: String.t(),
           service_identity_ref: String.t(),
+          provider_account_ref: String.t(),
+          model_account_ref: String.t(),
           target_ref: String.t(),
           target_posture_ref: String.t(),
           attach_grant_ref: String.t(),
@@ -113,6 +119,8 @@ defmodule SelfHostedInferenceCore.GovernedAuthority do
       startup_kind: value(attrs, :startup_kind, :attach_existing_service),
       endpoint_ref: value(attrs, :endpoint_ref),
       service_identity_ref: value(attrs, :service_identity_ref),
+      provider_account_ref: value(attrs, :provider_account_ref),
+      model_account_ref: value(attrs, :model_account_ref),
       target_ref: value(attrs, :target_ref),
       target_posture_ref: value(attrs, :target_posture_ref),
       attach_grant_ref: value(attrs, :attach_grant_ref),
@@ -206,6 +214,8 @@ defmodule SelfHostedInferenceCore.GovernedAuthority do
     %{
       endpoint_ref: authority.endpoint_ref,
       service_identity_ref: authority.service_identity_ref,
+      provider_account_ref: authority.provider_account_ref,
+      model_account_ref: authority.model_account_ref,
       target_ref: authority.target_ref,
       target_posture_ref: authority.target_posture_ref,
       attach_grant_ref: authority.attach_grant_ref,
@@ -269,6 +279,7 @@ defmodule SelfHostedInferenceCore.GovernedAuthority do
          :ok <- validate_optional_binary(:api_key, authority.api_key),
          :ok <- validate_headers(authority.headers),
          :ok <- validate_http(authority.ollama_http),
+         :ok <- validate_distinct_identity_refs(authority),
          :ok <- validate_positive_integer(:ready_timeout_ms, authority.ready_timeout_ms),
          :ok <- validate_positive_integer(:readiness_interval_ms, authority.readiness_interval_ms),
          :ok <- validate_positive_integer(:health_interval_ms, authority.health_interval_ms),
@@ -325,6 +336,22 @@ defmodule SelfHostedInferenceCore.GovernedAuthority do
   defp validate_http(nil), do: :ok
   defp validate_http(http) when is_function(http, 4), do: :ok
   defp validate_http(http), do: {:error, {:ollama_http, http}}
+
+  defp validate_distinct_identity_refs(%__MODULE__{} = authority) do
+    cond do
+      authority.service_identity_ref == authority.provider_account_ref ->
+        {:error, {:identity_ref_collision, :service_identity_ref, :provider_account_ref}}
+
+      authority.endpoint_ref == authority.provider_account_ref ->
+        {:error, {:identity_ref_collision, :endpoint_ref, :provider_account_ref}}
+
+      authority.model_account_ref == authority.provider_account_ref ->
+        {:error, {:identity_ref_collision, :model_account_ref, :provider_account_ref}}
+
+      true ->
+        :ok
+    end
+  end
 
   defp validate_positive_integer(_field, value) when is_integer(value) and value > 0, do: :ok
   defp validate_positive_integer(field, value), do: {:error, {field, value}}

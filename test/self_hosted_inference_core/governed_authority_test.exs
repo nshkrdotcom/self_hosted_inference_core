@@ -47,7 +47,9 @@ defmodule SelfHostedInferenceCore.GovernedAuthorityTest do
              credential_lease_ref: "credential-lease://self-hosted/ollama",
              credential_ref: "credential://self-hosted/ollama",
              endpoint_ref: "endpoint://self-hosted/ollama",
+             model_account_ref: "model-account://self-hosted/ollama/governed",
              operation_policy_ref: "operation-policy://self-hosted/ollama/read",
+             provider_account_ref: "provider-account://tenant/local-inference",
              redaction_ref: "redaction://self-hosted/ollama",
              service_identity_ref: "service-identity://ollama/local",
              target_posture_ref: "target-posture://self-hosted/ollama/no-egress",
@@ -56,6 +58,22 @@ defmodule SelfHostedInferenceCore.GovernedAuthorityTest do
 
     refute AttachSpec.instance_key(spec) =~ "governed-ollama-token"
     refute inspect(spec.metadata) =~ "governed-ollama-token"
+  end
+
+  test "governed authority requires distinct service endpoint and provider identities" do
+    authority = authority()
+    refs = GovernedAuthority.refs(authority)
+
+    assert refs.endpoint_ref == "endpoint://self-hosted/ollama"
+    assert refs.service_identity_ref == "service-identity://ollama/local"
+    assert refs.provider_account_ref == "provider-account://tenant/local-inference"
+    assert refs.model_account_ref == "model-account://self-hosted/ollama/governed"
+    refute refs.endpoint_ref == refs.provider_account_ref
+    refute refs.service_identity_ref == refs.provider_account_ref
+
+    assert {:error, {:identity_ref_collision, :service_identity_ref, :provider_account_ref}} =
+             authority_attrs(service_identity_ref: "provider-account://tenant/local-inference")
+             |> GovernedAuthority.new()
   end
 
   test "governed attach spec rejects unmanaged endpoint auth service config and attach fields" do
@@ -182,11 +200,19 @@ defmodule SelfHostedInferenceCore.GovernedAuthorityTest do
   end
 
   defp authority(overrides \\ []) do
-    defaults = [
+    overrides
+    |> authority_attrs()
+    |> GovernedAuthority.new!()
+  end
+
+  defp authority_attrs(overrides) do
+    [
       backend: :ollama,
       startup_kind: :attach_existing_service,
       endpoint_ref: "endpoint://self-hosted/ollama",
       service_identity_ref: "service-identity://ollama/local",
+      provider_account_ref: "provider-account://tenant/local-inference",
+      model_account_ref: "model-account://self-hosted/ollama/governed",
       target_ref: "target://self-hosted/ollama",
       target_posture_ref: "target-posture://self-hosted/ollama/no-egress",
       attach_grant_ref: "attach-grant://self-hosted/ollama",
@@ -200,10 +226,7 @@ defmodule SelfHostedInferenceCore.GovernedAuthorityTest do
       headers: %{},
       metadata: %{mode: :governed}
     ]
-
-    defaults
     |> Keyword.merge(overrides)
-    |> GovernedAuthority.new!()
   end
 
   defp req_llm_consumer do
