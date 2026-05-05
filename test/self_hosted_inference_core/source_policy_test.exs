@@ -11,7 +11,7 @@ defmodule SelfHostedInferenceCore.SourcePolicyTest do
   ]
   @excluded_segments ["deps", "_build", "dist", "doc", "tmp", "node_modules"]
 
-  test "source does not use dynamic atom conversion or regex APIs" do
+  test "source does not use dynamic atom conversion or pattern-engine APIs" do
     violations =
       @source_roots
       |> Enum.flat_map(&Path.wildcard(Path.join(@repo_root, &1)))
@@ -46,7 +46,8 @@ defmodule SelfHostedInferenceCore.SourcePolicyTest do
       {join(["Reg", "Exp"]), join(["Reg", "Exp"])},
       {join(["reg", "exp"]), join(["reg", "exp"])},
       {join(["re", ".compile"]), join(["re", ".compile"])},
-      {join(["import ", "re"]), join(["import ", "re"])}
+      {join(["import ", "re"]), join(["import ", "re"])},
+      {join(["Module", ".concat"]), join(["Module", ".concat"])}
     ]
   end
 
