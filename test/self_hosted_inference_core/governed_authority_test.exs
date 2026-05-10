@@ -11,7 +11,8 @@ defmodule SelfHostedInferenceCore.GovernedAuthorityTest do
   alias SelfHostedInferenceCore.TestSupport.OllamaService
 
   setup do
-    original_ollama_host = System.get_env("OLLAMA_HOST")
+    original_ollama_root_url =
+      Application.get_env(:self_hosted_inference_core, :ollama_root_url, :__missing__)
 
     _ = SelfHostedInferenceCore.stop_all_instances()
     _ = Ollama.unregister_backend()
@@ -20,14 +21,31 @@ defmodule SelfHostedInferenceCore.GovernedAuthorityTest do
     on_exit(fn ->
       _ = SelfHostedInferenceCore.stop_all_instances()
       _ = Ollama.unregister_backend()
-      restore_env("OLLAMA_HOST", original_ollama_host)
+      restore_app_env(:ollama_root_url, original_ollama_root_url)
     end)
 
     :ok
   end
 
-  test "governed attach spec uses authority materialization instead of OLLAMA_HOST" do
-    System.put_env("OLLAMA_HOST", "http://env-ollama.example:11434")
+  test "attach spec default root URL comes from runtime app config" do
+    Application.put_env(
+      :self_hosted_inference_core,
+      :ollama_root_url,
+      "http://configured-ollama.example:11434/v1"
+    )
+
+    assert AttachSpec.default_root_url() == "http://configured-ollama.example:11434"
+
+    assert {:ok, spec} = AttachSpec.new(model_identity: "configured-llama")
+    assert spec.root_url == "http://configured-ollama.example:11434"
+  end
+
+  test "governed attach spec uses authority materialization instead of runtime defaults" do
+    Application.put_env(
+      :self_hosted_inference_core,
+      :ollama_root_url,
+      "http://configured-ollama.example:11434"
+    )
 
     assert {:ok, spec} = AttachSpec.new(governed_authority: authority())
 
@@ -58,6 +76,7 @@ defmodule SelfHostedInferenceCore.GovernedAuthorityTest do
 
     refute AttachSpec.instance_key(spec) =~ "governed-ollama-token"
     refute inspect(spec.metadata) =~ "governed-ollama-token"
+    refute inspect(spec) =~ "configured-ollama"
   end
 
   test "governed authority requires distinct service endpoint and provider identities" do
@@ -242,6 +261,9 @@ defmodule SelfHostedInferenceCore.GovernedAuthorityTest do
     )
   end
 
-  defp restore_env(key, nil), do: System.delete_env(key)
-  defp restore_env(key, value), do: System.put_env(key, value)
+  defp restore_app_env(key, :__missing__),
+    do: Application.delete_env(:self_hosted_inference_core, key)
+
+  defp restore_app_env(key, value),
+    do: Application.put_env(:self_hosted_inference_core, key, value)
 end

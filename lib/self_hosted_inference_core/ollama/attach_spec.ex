@@ -108,10 +108,9 @@ defmodule SelfHostedInferenceCore.Ollama.AttachSpec do
 
   @spec default_root_url() :: String.t()
   def default_root_url do
-    case System.get_env("OLLAMA_HOST") do
-      nil -> @default_root_url
-      value -> normalize_root_url(value)
-    end
+    :self_hosted_inference_core
+    |> Application.get_env(:ollama_root_url, @default_root_url)
+    |> normalize_root_url()
   end
 
   defp get_value(map, field, default \\ nil) when is_map(map) do

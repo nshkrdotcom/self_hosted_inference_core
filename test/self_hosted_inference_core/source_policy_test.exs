@@ -22,6 +22,17 @@ defmodule SelfHostedInferenceCore.SourcePolicyTest do
     assert violations == []
   end
 
+  test "repo has dependency-source bootstrap without Weld adoption" do
+    assert File.regular?(Path.join(@repo_root, "build_support/dependency_sources.exs"))
+    assert File.regular?(Path.join(@repo_root, "build_support/dependency_sources.config.exs"))
+    assert File.read!(Path.join(@repo_root, ".gitignore")) =~ ".dependency_sources.local.exs"
+
+    mix_source = File.read!(Path.join(@repo_root, "mix.exs"))
+
+    assert mix_source =~ "build_support/dependency_sources.exs"
+    refute String.contains?(mix_source, "{:weld")
+  end
+
   defp violations_for_file(path) do
     contents = File.read!(path)
 

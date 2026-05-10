@@ -1,11 +1,14 @@
+unless Code.ensure_loaded?(DependencySources) do
+  Code.require_file("build_support/dependency_sources.exs", __DIR__)
+end
+
 defmodule SelfHostedInferenceCore.MixProject do
   use Mix.Project
 
   @version "0.1.0"
   @source_url "https://github.com/nshkrdotcom/self_hosted_inference_core"
   @homepage_url "https://hex.pm/packages/self_hosted_inference_core"
-  @execution_plane_version "~> 0.1.0"
-  @execution_plane_process_version "~> 0.1.0"
+  @repo_root __DIR__
 
   def project do
     [
@@ -49,38 +52,11 @@ defmodule SelfHostedInferenceCore.MixProject do
   end
 
   defp execution_plane_dep do
-    case local_dep_path("../execution_plane/core/execution_plane") do
-      nil -> {:execution_plane, @execution_plane_version}
-      path -> {:execution_plane, path: path}
-    end
+    DependencySources.dep(:execution_plane, @repo_root)
   end
 
   defp execution_plane_process_dep do
-    case execution_plane_workspace_dep_path("runtimes/execution_plane_process") do
-      nil -> {:execution_plane_process, @execution_plane_process_version}
-      path -> {:execution_plane_process, path: path}
-    end
-  end
-
-  defp execution_plane_workspace_dep_path(relative_child_path) do
-    "../execution_plane"
-    |> Path.join(relative_child_path)
-    |> local_dep_path()
-  end
-
-  defp local_dep_path(relative_path) do
-    if local_workspace_deps?() do
-      path = Path.expand(relative_path, __DIR__)
-      if File.dir?(path), do: path
-    end
-  end
-
-  defp local_workspace_deps? do
-    not hex_packaging_task?() and not Enum.member?(Path.split(__DIR__), "deps")
-  end
-
-  defp hex_packaging_task? do
-    Enum.any?(System.argv(), &(&1 in ["hex.build", "hex.publish"]))
+    DependencySources.dep(:execution_plane_process, @repo_root)
   end
 
   defp package do
@@ -99,6 +75,7 @@ defmodule SelfHostedInferenceCore.MixProject do
         "LICENSE",
         "README.md",
         ".formatter.exs",
+        "build_support",
         "lib",
         "mix.exs"
       ]

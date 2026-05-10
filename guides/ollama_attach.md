@@ -69,7 +69,7 @@ still being pulled or loaded.
 ## Governed Attach
 
 Standalone attach specs accept direct `root_url`, `model_identity`, `api_key`,
-headers, and `OLLAMA_HOST` defaulting. Those fields preserve local Ollama
+headers, and runtime application config defaulting. Those fields preserve local Ollama
 ergonomics and do not satisfy governed authority.
 
 Governed attach specs pass `governed_authority` instead. The authority packet
@@ -99,7 +99,8 @@ spawned services.
 ## Notes
 
 - `root_url` defaults to `http://127.0.0.1:11434`
-- `OLLAMA_HOST` is honored when `root_url` is omitted
+- `config :self_hosted_inference_core, :ollama_root_url, ...` is honored when
+  `root_url` is omitted
 - passing a `base_url` that already ends in `/v1` is normalized back to the
   daemon root before publication
 - the current manifest stays local-only with `supported_surfaces:

@@ -44,6 +44,7 @@ mix run examples/attach_existing_service_demo.exs
 Optional environment variables:
 
 - `OLLAMA_ROOT_URL`
-  - defaults to `http://127.0.0.1:11434` or `OLLAMA_HOST` when set
+  - defaults to `http://127.0.0.1:11434` or the configured
+    `:ollama_root_url` application setting
 - `OLLAMA_MODEL`
   - defaults to `llama3.2`

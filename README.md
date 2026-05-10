@@ -101,8 +101,10 @@ declared in the backend manifest.
 ## Governed Authority
 
 Standalone self-hosted inference keeps the existing local ergonomics:
-`Ollama.AttachSpec` accepts direct endpoint config, endpoint auth, and
-`OLLAMA_HOST` as the attach default when no root URL is supplied.
+`Ollama.AttachSpec` accepts direct endpoint config and endpoint auth. When no
+root URL is supplied, the attach default comes from
+`config :self_hosted_inference_core, :ollama_root_url, ...`, falling back to
+`http://127.0.0.1:11434`.
 
 Governed self-hosted inference is selected with
 `governed_authority: %SelfHostedInferenceCore.GovernedAuthority{}` or
