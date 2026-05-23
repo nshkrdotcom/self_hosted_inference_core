@@ -3,10 +3,11 @@ defmodule SelfHostedInferenceCore.RuntimeSnapshot do
   Snapshot of the current runtime-instance state exposed by the registry.
   """
 
-  alias SelfHostedInferenceCore.EndpointDescriptor
+  alias SelfHostedInferenceCore.{AdapterRef, EndpointDescriptor}
 
   defstruct instance_id: nil,
             backend: nil,
+            adapter_ref: nil,
             startup_kind: nil,
             management_mode: nil,
             lifecycle_status: :starting,
@@ -20,6 +21,7 @@ defmodule SelfHostedInferenceCore.RuntimeSnapshot do
   @type t :: %__MODULE__{
           instance_id: String.t(),
           backend: atom(),
+          adapter_ref: AdapterRef.t() | nil,
           startup_kind: atom(),
           management_mode: atom(),
           lifecycle_status: :starting | :ready | :failed | :stopped,

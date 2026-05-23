@@ -25,7 +25,8 @@ defmodule SelfHostedInferenceCore.MixProject do
       source_url: @source_url,
       homepage_url: @homepage_url,
       dialyzer: dialyzer(),
-      deps: deps()
+      deps: deps(),
+      aliases: aliases()
     ]
   end
 
@@ -122,6 +123,8 @@ defmodule SelfHostedInferenceCore.MixProject do
         ],
         Contracts: [
           SelfHostedInferenceCore.InstanceSpec,
+          SelfHostedInferenceCore.AdapterRef,
+          SelfHostedInferenceCore.RouteLogits,
           SelfHostedInferenceCore.EndpointDescriptor,
           SelfHostedInferenceCore.BackendManifest,
           SelfHostedInferenceCore.ConsumerManifest,
@@ -146,6 +149,20 @@ defmodule SelfHostedInferenceCore.MixProject do
       plt_core_path: "priv/plts/core",
       plt_local_path: "priv/plts",
       flags: [:error_handling, :underspecs]
+    ]
+  end
+
+  defp aliases do
+    [
+      ci: [
+        "deps.get",
+        "format --check-formatted",
+        "compile --warnings-as-errors",
+        "cmd mix test",
+        "credo --strict",
+        "dialyzer --format short",
+        "docs"
+      ]
     ]
   end
 end

@@ -6,6 +6,7 @@ defmodule SelfHostedInferenceCore.RuntimeInstance do
   alias ExecutionPlane.Process.Transport
 
   alias SelfHostedInferenceCore.{
+    AdapterRef,
     Backend,
     EndpointDescriptor,
     LeaseRef,
@@ -63,29 +64,37 @@ defmodule SelfHostedInferenceCore.RuntimeInstance do
   @impl true
   def init({%Backend.StartupPlan{} = plan, backend_module}) do
     Process.flag(:trap_exit, true)
+    adapter_ref = Map.get(plan.metadata, :adapter_ref)
 
-    state = %{
-      backend_module: backend_module,
-      plan: plan,
-      instance_id: plan.instance_key,
-      transport_pid: nil,
-      transport_tag: make_ref(),
-      backend_state: plan.backend_state,
-      lifecycle_status: :starting,
-      health_status: :unavailable,
-      endpoint: nil,
-      leases: %{},
-      lease_timers: %{},
-      waiters: [],
-      inserted_at_ms: now_ms(),
-      ready_at_ms: nil,
-      readiness_timer: nil,
-      readiness_timeout_timer: nil,
-      health_timer: nil,
-      idle_timer: nil
-    }
+    case register_adapter_key(plan.backend, adapter_ref) do
+      :ok ->
+        state = %{
+          backend_module: backend_module,
+          plan: plan,
+          instance_id: plan.instance_key,
+          adapter_ref: adapter_ref,
+          transport_pid: nil,
+          transport_tag: make_ref(),
+          backend_state: plan.backend_state,
+          lifecycle_status: :starting,
+          health_status: :unavailable,
+          endpoint: nil,
+          leases: %{},
+          lease_timers: %{},
+          waiters: [],
+          inserted_at_ms: now_ms(),
+          ready_at_ms: nil,
+          readiness_timer: nil,
+          readiness_timeout_timer: nil,
+          health_timer: nil,
+          idle_timer: nil
+        }
 
-    {:ok, state, {:continue, :bootstrap}}
+        {:ok, state, {:continue, :bootstrap}}
+
+      {:error, reason} ->
+        {:stop, reason}
+    end
   end
 
   @impl true
@@ -160,7 +169,7 @@ defmodule SelfHostedInferenceCore.RuntimeInstance do
         owner_ref: owner_ref,
         ttl_ms: ttl_ms,
         renewable?: renewable?,
-        metadata: %{instance_id: state.instance_id}
+        metadata: lease_metadata(state)
       )
 
     timer =
@@ -421,8 +430,34 @@ defmodule SelfHostedInferenceCore.RuntimeInstance do
       endpoint: state.endpoint,
       inserted_at_ms: state.inserted_at_ms,
       ready_at_ms: state.ready_at_ms,
-      metadata: state.plan.metadata
+      adapter_ref: state.adapter_ref,
+      metadata: snapshot_metadata(state)
     }
+  end
+
+  defp register_adapter_key(_backend_id, nil), do: :ok
+
+  defp register_adapter_key(backend_id, %AdapterRef{} = adapter_ref) do
+    case Registry.register(
+           SelfHostedInferenceCore.ProcessRegistry,
+           {:adapter, {backend_id, AdapterRef.key(adapter_ref)}},
+           []
+         ) do
+      {:ok, _pid} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp snapshot_metadata(%{adapter_ref: nil} = state), do: state.plan.metadata
+
+  defp snapshot_metadata(state) do
+    Map.put(state.plan.metadata, :adapter_ref, state.adapter_ref)
+  end
+
+  defp lease_metadata(%{adapter_ref: nil} = state), do: %{instance_id: state.instance_id}
+
+  defp lease_metadata(state) do
+    %{instance_id: state.instance_id, adapter_ref: state.adapter_ref}
   end
 
   defp reply_waiters(state, result) do

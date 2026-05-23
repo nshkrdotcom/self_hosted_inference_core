@@ -77,8 +77,10 @@ defmodule SelfHostedInferenceCore do
     with {:ok, %InstanceSpec{} = spec} <- normalize_spec(spec_or_attrs),
          {:ok, backend_module} <- BackendRegistry.fetch_module(spec.backend),
          {:ok, %Backend.StartupPlan{} = plan} <- backend_module.startup_plan(spec),
+         plan = put_adapter_ref(plan, InstanceSpec.adapter_ref(spec)),
          :ok <- validate_startup_plan(spec, backend_module, plan),
-         {:ok, pid, reused?} <- RuntimeRegistry.ensure_instance(plan, backend_module),
+         {:ok, pid, reused?} <-
+           RuntimeRegistry.ensure_instance(plan, backend_module, InstanceSpec.adapter_ref(spec)),
          {:ok, %RuntimeSnapshot{} = snapshot} <-
            RuntimeInstance.await_ready(pid, await_timeout(opts)) do
       {:ok, %{instance: snapshot, reused?: reused?}}
@@ -180,6 +182,12 @@ defmodule SelfHostedInferenceCore do
   defp normalize_spec(%InstanceSpec{} = spec), do: {:ok, spec}
   defp normalize_spec(attrs) when is_list(attrs) or is_map(attrs), do: InstanceSpec.new(attrs)
 
+  defp put_adapter_ref(%Backend.StartupPlan{} = plan, nil), do: plan
+
+  defp put_adapter_ref(%Backend.StartupPlan{} = plan, adapter_ref) do
+    %{plan | metadata: Map.put(plan.metadata, :adapter_ref, adapter_ref)}
+  end
+
   defp normalize_request_instance_spec(request, context) do
     with {:ok, target_preference} <- fetch_target_preference(request),
          {:ok, target_preference} <-
@@ -207,6 +215,7 @@ defmodule SelfHostedInferenceCore do
 
       InstanceSpec.new(
         backend: backend,
+        adapter_ref: optional_target_preference_field(target_preference, :adapter_ref),
         startup_kind: startup_kind,
         execution_surface: execution_surface,
         backend_options: backend_options,
