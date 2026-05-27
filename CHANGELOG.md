@@ -7,6 +7,10 @@ Versioning.
 
 ## [Unreleased]
 
+- Bump the package to `0.2.0` for the Crucible runtime integration.
+- Add supervised `SelfHostedInferenceCore.CrucibleRuntime` workers with
+  lease, readiness, health, forward, and generation APIs over Crucible
+  Bumblebee runners.
 - Add governed self-hosted endpoint authority materialization for target
   preferences and Ollama attach specs, with direct unmanaged auth/config/attach
   field rejection and raw-header-free attach instance keys.

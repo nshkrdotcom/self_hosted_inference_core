@@ -48,3 +48,23 @@ Optional environment variables:
     `:ollama_root_url` application setting
 - `OLLAMA_MODEL`
   - defaults to `llama3.2`
+
+## Crucible Runtime Mock Demo
+
+`crucible_runtime_mock.exs` starts a supervised Crucible runtime with fixture
+model outputs, acquires a lease, runs a forward pass, and releases the lease.
+
+Run it with:
+
+```bash
+mix run examples/crucible_runtime_mock.exs
+```
+
+## Crucible Runtime Live Demo
+
+`crucible_runtime_live.exs` skips cleanly unless live model execution is
+enabled.
+
+```bash
+CRUCIBLE_LIVE_MODEL=1 mix run examples/crucible_runtime_live.exs
+```

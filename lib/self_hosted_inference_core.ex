@@ -10,6 +10,7 @@ defmodule SelfHostedInferenceCore do
     Compatibility,
     CompatibilityResult,
     ConsumerManifest,
+    CrucibleRuntime,
     EndpointDescriptor,
     GovernedAuthority,
     InstanceSpec,
@@ -178,6 +179,9 @@ defmodule SelfHostedInferenceCore do
 
   @spec stop_all_instances() :: :ok
   def stop_all_instances, do: RuntimeRegistry.stop_all_instances()
+
+  @spec start_crucible_runtime(map() | keyword()) :: DynamicSupervisor.on_start_child()
+  def start_crucible_runtime(opts), do: CrucibleRuntime.start_child(opts)
 
   defp normalize_spec(%InstanceSpec{} = spec), do: {:ok, spec}
   defp normalize_spec(attrs) when is_list(attrs) or is_map(attrs), do: InstanceSpec.new(attrs)

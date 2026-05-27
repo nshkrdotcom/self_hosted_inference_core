@@ -7,7 +7,10 @@ defmodule SelfHostedInferenceCore.Application do
     children = [
       SelfHostedInferenceCore.BackendRegistry,
       {Registry, keys: :unique, name: SelfHostedInferenceCore.ProcessRegistry},
-      {DynamicSupervisor, strategy: :one_for_one, name: SelfHostedInferenceCore.RuntimeSupervisor}
+      {DynamicSupervisor,
+       strategy: :one_for_one, name: SelfHostedInferenceCore.RuntimeSupervisor},
+      {DynamicSupervisor,
+       strategy: :one_for_one, name: SelfHostedInferenceCore.CrucibleRuntimeSupervisor}
     ]
 
     Supervisor.start_link(children,

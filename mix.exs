@@ -5,7 +5,7 @@ end
 defmodule SelfHostedInferenceCore.MixProject do
   use Mix.Project
 
-  @version "0.1.0"
+  @version "0.2.0"
   @source_url "https://github.com/nshkrdotcom/self_hosted_inference_core"
   @homepage_url "https://hex.pm/packages/self_hosted_inference_core"
   @repo_root __DIR__
@@ -46,6 +46,9 @@ defmodule SelfHostedInferenceCore.MixProject do
     [
       execution_plane_dep(),
       execution_plane_process_dep(),
+      {:crucible_bumblebee, path: "../../North-Shore-AI/crucible_bumblebee"},
+      {:crucible_tap, path: "../../North-Shore-AI/crucible_tap"},
+      {:telemetry, "~> 1.4"},
       {:ex_doc, "~> 0.40", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: :dev, runtime: false}
@@ -77,6 +80,8 @@ defmodule SelfHostedInferenceCore.MixProject do
         "README.md",
         ".formatter.exs",
         "build_support",
+        "examples",
+        "guides",
         "lib",
         "mix.exs"
       ]
@@ -97,6 +102,7 @@ defmodule SelfHostedInferenceCore.MixProject do
         "guides/backend_packages.md": [title: "Backend Packages"],
         "guides/ollama_attach.md": [title: "Ollama Attach"],
         "guides/runtime_registry.md": [title: "Runtime Registry"],
+        "guides/crucible_runtime.md": [title: "Crucible Runtime"],
         "guides/startup_kinds.md": [title: "Startup Kinds"],
         "examples/README.md": [title: "Examples", filename: "examples"],
         "CHANGELOG.md": [title: "Changelog"],
@@ -109,6 +115,7 @@ defmodule SelfHostedInferenceCore.MixProject do
           "guides/backend_packages.md",
           "guides/ollama_attach.md",
           "guides/runtime_registry.md",
+          "guides/crucible_runtime.md",
           "guides/startup_kinds.md"
         ],
         Examples: ["examples/README.md"],
@@ -117,6 +124,9 @@ defmodule SelfHostedInferenceCore.MixProject do
       groups_for_modules: [
         "Public API": [
           SelfHostedInferenceCore,
+          SelfHostedInferenceCore.CrucibleRuntime,
+          SelfHostedInferenceCore.Health,
+          SelfHostedInferenceCore.Readiness,
           SelfHostedInferenceCore.Backend,
           SelfHostedInferenceCore.Ollama,
           SelfHostedInferenceCore.Simulation

@@ -55,6 +55,8 @@ Two backend shapes are now proved:
 - concrete spawned backend package: `llama_cpp_sdk`
 - built-in service-mode simulation backend:
   `SelfHostedInferenceCore.Simulation`
+- supervised Crucible runtime workers:
+  `SelfHostedInferenceCore.CrucibleRuntime`
 
 `SelfHostedInferenceCore.Ollama` proves the first truthful
 `management_mode: :externally_managed` path.
@@ -129,7 +131,7 @@ Add the package to your dependency list:
 ```elixir
 def deps do
   [
-    {:self_hosted_inference_core, "~> 0.1.0"}
+    {:self_hosted_inference_core, "~> 0.2.0"}
   ]
 end
 ```
@@ -145,6 +147,8 @@ See [`guides/backend_packages.md`](guides/backend_packages.md) for how the
 kernel expects concrete backend packages to attach.
 See [`guides/ollama_attach.md`](guides/ollama_attach.md) for the built-in
 attached-local backend.
+See [`guides/crucible_runtime.md`](guides/crucible_runtime.md) for supervised
+Crucible forward/generation workers.
 
 ## Quick Start
 
