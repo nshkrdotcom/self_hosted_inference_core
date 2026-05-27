@@ -3,7 +3,16 @@ defmodule SelfHostedInferenceCore.CrucibleRuntime.Worker do
 
   use GenServer
 
-  alias CrucibleBumblebee.{ExampleSurface, ForwardRunner, GenerationRunner, ModelSurface}
+  alias CrucibleBumblebee.{
+    ExampleSurface,
+    ForwardRunner,
+    GenerationRunner,
+    Live,
+    ModelLoader,
+    ModelSurface,
+    Preflight
+  }
+
   alias CrucibleTap.TapPlan
   alias SelfHostedInferenceCore.{CrucibleRuntime, LeaseRef}
 
@@ -32,10 +41,19 @@ defmodule SelfHostedInferenceCore.CrucibleRuntime.Worker do
   def init(opts) do
     Process.flag(:trap_exit, true)
 
+    if Keyword.get(opts, :live_model?, false) do
+      init_live(opts)
+    else
+      init_fixture(opts)
+    end
+  end
+
+  defp init_fixture(opts) do
     with {:ok, surface} <- resolve_surface(opts),
          {:ok, tap_plan} <- resolve_tap_plan(opts),
          {:ok, forward_serving} <- compile_forward_serving(opts, surface, tap_plan) do
       state = %{
+        provider: :fixture,
         id: Keyword.fetch!(opts, :id),
         model_ref: Keyword.get(opts, :model_ref, "model:fixture"),
         backend: Keyword.get(opts, :backend_preference, :auto),
@@ -43,7 +61,22 @@ defmodule SelfHostedInferenceCore.CrucibleRuntime.Worker do
         tap_plan: tap_plan,
         forward_serving: forward_serving,
         generation_runner: Keyword.get(opts, :generation_runner),
+        model_bundle: nil,
+        capability_report: nil,
         ready?: true,
+        tokenizer_loaded?: true,
+        model_loaded?: true,
+        last_forward_ok?: false,
+        last_error: nil,
+        state_machine: [
+          :init,
+          :select_backend,
+          :load_tokenizer,
+          :load_model,
+          :preflight_surface,
+          :compile_tap_plan,
+          :ready
+        ],
         leases: %{},
         lease_timers: %{},
         started_at_ms: now_ms()
@@ -53,6 +86,51 @@ defmodule SelfHostedInferenceCore.CrucibleRuntime.Worker do
     else
       {:error, reason} -> {:stop, reason}
     end
+  end
+
+  defp init_live(opts) do
+    case ModelLoader.load() do
+      {:ok, bundle} ->
+        tap_plan = Live.forward_tap_plan()
+        preflight = Preflight.run!(bundle, tap_plan)
+
+        state = %{
+          provider: :elixir_bumblebee,
+          id: Keyword.fetch!(opts, :id),
+          model_ref: bundle.model_id,
+          backend: bundle.backend,
+          surface: preflight.surface,
+          tap_plan: tap_plan,
+          forward_serving: nil,
+          generation_runner: nil,
+          model_bundle: bundle,
+          capability_report: preflight.capability_report,
+          ready?: true,
+          tokenizer_loaded?: true,
+          model_loaded?: true,
+          last_forward_ok?: false,
+          last_error: nil,
+          state_machine: [
+            :init,
+            :select_backend,
+            :load_tokenizer,
+            :load_model,
+            :preflight_surface,
+            :compile_tap_plan,
+            :ready
+          ],
+          leases: %{},
+          lease_timers: %{},
+          started_at_ms: now_ms()
+        }
+
+        {:ok, state}
+
+      {:error, reason} ->
+        {:stop, reason}
+    end
+  rescue
+    error -> {:stop, {:live_model_start_failed, Exception.message(error)}}
   end
 
   @impl true
@@ -105,6 +183,15 @@ defmodule SelfHostedInferenceCore.CrucibleRuntime.Worker do
     {:reply, :ok, release_lease(state, lease_ref)}
   end
 
+  def handle_call(
+        {:forward, _tap_plan, input, opts},
+        _from,
+        %{ready?: true, provider: :elixir_bumblebee} = state
+      ) do
+    {result, state} = run_live_forward(state, input, opts)
+    {:reply, result, state}
+  end
+
   def handle_call({:forward, _tap_plan, input, opts}, _from, %{ready?: true} = state) do
     result =
       ForwardRunner.run_serving(
@@ -113,7 +200,7 @@ defmodule SelfHostedInferenceCore.CrucibleRuntime.Worker do
         Keyword.merge([trace_id: trace_id(state), model_ref: state.model_ref], opts)
       )
 
-    {:reply, result, state}
+    {:reply, result, %{state | last_forward_ok?: true, last_error: nil}}
   end
 
   def handle_call({:forward, _tap_plan, _input, _opts}, _from, state) do
@@ -245,20 +332,51 @@ defmodule SelfHostedInferenceCore.CrucibleRuntime.Worker do
     %{
       id: state.id,
       ready?: state.ready?,
+      runtime_id: to_string(state.id),
+      provider_kind:
+        if(state.provider == :elixir_bumblebee, do: :elixir_bumblebee, else: :fixture),
+      model_id: state.model_ref,
+      tokenizer_loaded?: state.tokenizer_loaded?,
+      model_loaded?: state.model_loaded?,
       backend: state.backend,
       surface: state.surface.id,
       model_ref: state.model_ref,
       lease_count: map_size(state.leases),
+      active_leases: map_size(state.leases),
       capabilities: capabilities(state),
+      last_forward_ok?: state.last_forward_ok?,
+      last_error: state.last_error,
+      state_machine: state.state_machine,
       started_at_ms: state.started_at_ms
     }
   end
+
+  defp capabilities(%{capability_report: %Crucible.CapabilityReport{} = report}), do: report
 
   defp capabilities(state) do
     state.surface.capabilities
     |> Map.put(:backend, state.backend)
     |> Map.put(:surface, state.surface.id)
   end
+
+  defp run_live_forward(state, input, opts) do
+    prompt = prompt_from_input(input)
+    name = Keyword.get(opts, :trace_name, "hosted_runtime_#{state.id}")
+
+    result = Live.forward(name: name, prompt: prompt)
+    trace = CrucibleSignalTrace.Ingest.from_jsonl!(result.trace_path, [])
+
+    {{:ok, trace}, %{state | last_forward_ok?: true, last_error: nil}}
+  rescue
+    error ->
+      reason = Exception.message(error)
+      {{:error, reason}, %{state | last_forward_ok?: false, last_error: reason}}
+  end
+
+  defp prompt_from_input(%{prompt: prompt}) when is_binary(prompt), do: prompt
+  defp prompt_from_input(%{"prompt" => prompt}) when is_binary(prompt), do: prompt
+  defp prompt_from_input(prompt) when is_binary(prompt), do: prompt
+  defp prompt_from_input(_input), do: "Hi"
 
   defp trace_id(state), do: "crucible-runtime:#{state.id}:#{System.unique_integer([:positive])}"
 

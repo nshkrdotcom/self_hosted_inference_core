@@ -1,5 +1,3 @@
-# credo:disable-for-this-file Credo.Check.Warning.StructFieldAmount
-
 defmodule SelfHostedInferenceCore.GovernedAuthority do
   @moduledoc """
   Authority-selected endpoint and attach materialization for governed services.

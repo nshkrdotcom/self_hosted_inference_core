@@ -65,7 +65,7 @@ defmodule SelfHostedInferenceCore.CrucibleRuntime do
   def release(runtime_ref, lease_ref), do: GenServer.call(runtime_ref, {:release, lease_ref})
 
   @spec forward(runtime_ref(), term(), term(), keyword()) ::
-          {:ok, CrucibleSignalTrace.ForwardTrace.t()} | {:error, term()}
+          {:ok, Crucible.ForwardTrace.t()} | {:error, term()}
   def forward(runtime_ref, tap_plan, input, opts \\ []),
     do: GenServer.call(runtime_ref, {:forward, tap_plan, input, opts}, call_timeout(opts))
 

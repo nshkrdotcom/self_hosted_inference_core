@@ -220,3 +220,16 @@ HexDocs includes:
 ## License
 
 Released under the MIT License. See `LICENSE`.
+
+## V4 Status
+
+Status: `hosted-runtime-gate-passing`.
+
+`SelfHostedInferenceCore.CrucibleRuntime` can start a live native Bumblebee
+worker with `live_model?: true`. Readiness is true only after the tokenizer,
+model parameters, backend, surface preflight, and tap plan are loaded. The live
+gate is:
+
+```bash
+CRUCIBLE_LIVE_MODEL=true mix test --only live_cpu_heavy
+```

@@ -103,6 +103,7 @@ defmodule SelfHostedInferenceCore.MixProject do
         "guides/ollama_attach.md": [title: "Ollama Attach"],
         "guides/runtime_registry.md": [title: "Runtime Registry"],
         "guides/crucible_runtime.md": [title: "Crucible Runtime"],
+        "guides/real_model_live_gates.md": [title: "Real Model Live Gates"],
         "guides/startup_kinds.md": [title: "Startup Kinds"],
         "examples/README.md": [title: "Examples", filename: "examples"],
         "CHANGELOG.md": [title: "Changelog"],
@@ -116,6 +117,7 @@ defmodule SelfHostedInferenceCore.MixProject do
           "guides/ollama_attach.md",
           "guides/runtime_registry.md",
           "guides/crucible_runtime.md",
+          "guides/real_model_live_gates.md",
           "guides/startup_kinds.md"
         ],
         Examples: ["examples/README.md"],
