@@ -12,7 +12,10 @@ defmodule SelfHostedInferenceCore.CrucibleRuntimeTest do
       for snapshot <- CrucibleRuntime.list_snapshots() do
         if pid = CrucibleRuntime.whereis(snapshot.id) do
           try do
-            GenServer.stop(pid)
+            DynamicSupervisor.terminate_child(
+              SelfHostedInferenceCore.CrucibleRuntimeSupervisor,
+              pid
+            )
           catch
             :exit, _reason -> :ok
           end
@@ -88,6 +91,21 @@ defmodule SelfHostedInferenceCore.CrucibleRuntimeTest do
 
     assert Registry.lookup(SelfHostedInferenceCore.ProcessRegistry, {:instance, to_string(id)}) ==
              []
+  end
+
+  test "live worker rejects readiness when model loading cannot preflight" do
+    id = :"crucible-runtime-live-blocked-#{System.unique_integer([:positive])}"
+
+    assert {:error, reason} =
+             CrucibleRuntime.start_child(
+               id: id,
+               live_model?: true,
+               model_id: "unsupported/model",
+               backend: :binary
+             )
+
+    assert inspect(reason) =~ "unsupported/model"
+    refute CrucibleRuntime.whereis(id)
   end
 
   defp tap_plan do

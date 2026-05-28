@@ -221,15 +221,20 @@ HexDocs includes:
 
 Released under the MIT License. See `LICENSE`.
 
-## V4 Status
+## V5 Status
 
-Status: `hosted-runtime-gate-passing`.
+Status: `hosted-runtime-ladder-passing`.
 
 `SelfHostedInferenceCore.CrucibleRuntime` can start a live native Bumblebee
 worker with `live_model?: true`. Readiness is true only after the tokenizer,
-model parameters, backend, surface preflight, and tap plan are loaded. The live
-gate is:
+model parameters, backend, surface preflight, and tap plan are loaded. The V5
+runtime path runs forward against the already-loaded worker bundle and supports
+one-step hosted manual generation for causal models.
+
+The live gates are:
 
 ```bash
 CRUCIBLE_LIVE_MODEL=true mix test --only live_cpu_heavy
+CRUCIBLE_LIVE_MODEL=true CRUCIBLE_BUMBLEBEE_MODEL_ID=gpt2 mix test --only live_cpu_heavy
+CRUCIBLE_LIVE_MODEL=true mix run examples/crucible_runtime_ladder_live.exs -- --backend binary
 ```
