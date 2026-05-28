@@ -238,3 +238,9 @@ CRUCIBLE_LIVE_MODEL=true mix test --only live_cpu_heavy
 CRUCIBLE_LIVE_MODEL=true CRUCIBLE_BUMBLEBEE_MODEL_ID=gpt2 mix test --only live_cpu_heavy
 CRUCIBLE_LIVE_MODEL=true mix run examples/crucible_runtime_ladder_live.exs -- --backend binary
 ```
+
+Phase artifacts are recorded under `tmp/crucible_v5/`, including
+`tmp/crucible_v5/transcripts/self_hosted_inference_core_live_tiny_phase13_final.log`,
+`tmp/crucible_v5/transcripts/self_hosted_inference_core_live_gpt2_phase13_final.log`,
+and
+`tmp/crucible_v5/transcripts/self_hosted_inference_core_hosted_ladder_phase13_final.log`.
