@@ -22,11 +22,11 @@ defmodule SelfHostedInferenceCore.AdapterRefRegistryTest do
     :ok
   end
 
-  test "instance specs without adapter_ref remain backward compatible" do
+  test "instance specs without adapter_ref use backend-only registry keys" do
     spec =
       InstanceSpec.new!(
         backend: :test_spawned_backend,
-        backend_options: %{model_identity: "legacy"}
+        backend_options: %{model_identity: "backend-only"}
       )
 
     assert spec.adapter_ref == nil

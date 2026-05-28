@@ -1,6 +1,6 @@
 defmodule SelfHostedInferenceCore.CrucibleRuntime do
   @moduledoc """
-  Supervised Crucible runtime API for Bumblebee-backed forward and generation calls.
+  Supervised Crucible runtime API for provider-backed forward and generation calls.
   """
 
   alias SelfHostedInferenceCore.{CrucibleRuntime.Worker, LeaseRef}

@@ -1,11 +1,9 @@
 defmodule SelfHostedInferenceCore.CrucibleRuntimeTest do
   use ExUnit.Case, async: false
 
-  alias CrucibleBumblebee.ExampleSurface
-  alias CruciblePolicy.SteeringPlan
-  alias CrucibleSignalTrace.ForwardTrace
   alias CrucibleTap.TapPlan
   alias SelfHostedInferenceCore.{CrucibleRuntime, Health, LeaseRef, Readiness}
+  alias SelfHostedInferenceCore.TestSupport.FailingCrucibleProvider
 
   setup do
     on_exit(fn ->
@@ -33,8 +31,7 @@ defmodule SelfHostedInferenceCore.CrucibleRuntimeTest do
     assert {:ok, pid} =
              CrucibleRuntime.start_child(
                id: id,
-               model_ref: "model:fixture",
-               surface_module: ExampleSurface,
+               model_id: "model:fixture",
                serving_tap_plan: tap_plan,
                predict_fun: &fixture_outputs/1
              )
@@ -47,10 +44,10 @@ defmodule SelfHostedInferenceCore.CrucibleRuntimeTest do
     assert {:ok, %LeaseRef{} = lease} = CrucibleRuntime.lease(pid, owner_ref: "test")
     assert lease.metadata.runtime == id
 
-    assert {:ok, %ForwardTrace{} = trace} =
+    assert {:ok, %Crucible.ForwardTrace{} = trace} =
              CrucibleRuntime.forward(pid, tap_plan, %{prompt: "hello"})
 
-    assert trace.model_ref == "model:fixture"
+    assert trace.model_id == "model:fixture"
     assert trace.final_logits.signal_type == :final_logits
 
     assert :ok = CrucibleRuntime.release(lease)
@@ -59,16 +56,15 @@ defmodule SelfHostedInferenceCore.CrucibleRuntimeTest do
 
   test "generation uses configured custom loop" do
     id = :"crucible-runtime-generation-#{System.unique_integer([:positive])}"
-    generation_runner = fn input, %SteeringPlan{} = plan -> %{input: input, mode: plan.mode} end
+    generation_runner = fn input, plan -> %{input: input, mode: plan.mode} end
 
     assert {:ok, pid} =
              CrucibleRuntime.start_child(
                id: id,
-               generation_runner: generation_runner,
-               surface_module: ExampleSurface
+               generation_runner: generation_runner
              )
 
-    steering = SteeringPlan.new!(trace_id: "trace-1", token_biases: %{1 => 1.0})
+    steering = %{trace_id: "trace-1", token_biases: %{1 => 1.0}, mode: :token_boundary}
 
     assert {:ok, %{input: "prompt", mode: :token_boundary}} =
              CrucibleRuntime.generate(pid, nil, "prompt", steering_plan: steering)
@@ -76,16 +72,16 @@ defmodule SelfHostedInferenceCore.CrucibleRuntimeTest do
 
   test "health and readiness include crucible runtimes" do
     id = :"crucible-runtime-health-#{System.unique_integer([:positive])}"
-    assert {:ok, _pid} = CrucibleRuntime.start_child(id: id, surface_module: ExampleSurface)
+    assert {:ok, _pid} = CrucibleRuntime.start_child(id: id)
 
     assert Readiness.ready?()
     assert %{crucible_runtimes: [snapshot | _]} = Health.report()
     assert snapshot.ready?
   end
 
-  test "registry key does not collide with legacy runtime instance keys" do
+  test "registry key does not collide with service runtime instance keys" do
     id = :"crucible-runtime-registry-#{System.unique_integer([:positive])}"
-    assert {:ok, pid} = CrucibleRuntime.start_child(id: id, surface_module: ExampleSurface)
+    assert {:ok, pid} = CrucibleRuntime.start_child(id: id)
 
     assert CrucibleRuntime.whereis(id) == pid
 
@@ -93,15 +89,14 @@ defmodule SelfHostedInferenceCore.CrucibleRuntimeTest do
              []
   end
 
-  test "live worker rejects readiness when model loading cannot preflight" do
-    id = :"crucible-runtime-live-blocked-#{System.unique_integer([:positive])}"
+  test "provider startup failures keep the runtime out of readiness" do
+    id = :"crucible-runtime-provider-blocked-#{System.unique_integer([:positive])}"
 
     assert {:error, reason} =
              CrucibleRuntime.start_child(
                id: id,
-               live_model?: true,
-               model_id: "unsupported/model",
-               backend: :binary
+               provider_module: FailingCrucibleProvider,
+               provider_opts: [reason: {:unsupported_model, "unsupported/model"}]
              )
 
     assert inspect(reason) =~ "unsupported/model"

@@ -1,6 +1,6 @@
 defmodule SelfHostedInferenceCore.Health do
   @moduledoc """
-  Health report for legacy and Crucible runtimes.
+  Health report for service and Crucible runtimes.
   """
 
   alias SelfHostedInferenceCore.{CrucibleRuntime, RuntimeRegistry}

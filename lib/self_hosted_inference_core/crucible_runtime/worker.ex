@@ -3,23 +3,11 @@ defmodule SelfHostedInferenceCore.CrucibleRuntime.Worker do
 
   use GenServer
 
-  alias CrucibleBumblebee.{
-    ExampleSurface,
-    ForwardRunner,
-    GenerationRunner,
-    Live,
-    ManualGeneration,
-    ModelLoader,
-    ModelLoader.Options,
-    ModelSurface,
-    Preflight,
-    TraceWriter
+  alias SelfHostedInferenceCore.{
+    CrucibleRuntime,
+    CrucibleRuntime.FixtureProvider,
+    LeaseRef
   }
-
-  alias CrucibleTap.TapPlan
-  alias SelfHostedInferenceCore.{CrucibleArtifacts, CrucibleRuntime, LeaseRef}
-
-  @default_tap_plan_id "crucible-runtime-default"
 
   def child_spec(opts) when is_map(opts), do: child_spec(Map.to_list(opts))
 
@@ -44,42 +32,15 @@ defmodule SelfHostedInferenceCore.CrucibleRuntime.Worker do
   def init(opts) do
     Process.flag(:trap_exit, true)
 
-    if Keyword.get(opts, :live_model?, false) do
-      init_live(opts)
-    else
-      init_fixture(opts)
-    end
-  end
-
-  defp init_fixture(opts) do
-    with {:ok, surface} <- resolve_surface(opts),
-         {:ok, tap_plan} <- resolve_tap_plan(opts),
-         {:ok, forward_serving} <- compile_forward_serving(opts, surface, tap_plan) do
+    with {:ok, provider_module} <- resolve_provider_module(opts),
+         {:ok, provider_state} <- provider_module.init(provider_opts(opts)) do
       state = %{
-        provider: :fixture,
         id: Keyword.fetch!(opts, :id),
-        model_ref: Keyword.get(opts, :model_ref, "model:fixture"),
-        backend: Keyword.get(opts, :backend_preference, :auto),
-        surface: surface,
-        tap_plan: tap_plan,
-        forward_serving: forward_serving,
-        generation_runner: Keyword.get(opts, :generation_runner),
-        model_bundle: nil,
-        capability_report: nil,
-        ready?: true,
-        tokenizer_loaded?: true,
-        model_loaded?: true,
+        provider_module: provider_module,
+        provider_state: provider_state,
+        ready?: provider_module.ready?(provider_state),
         last_forward_ok?: false,
         last_error: nil,
-        state_machine: [
-          :init,
-          :select_backend,
-          :load_tokenizer,
-          :load_model,
-          :preflight_surface,
-          :compile_tap_plan,
-          :ready
-        ],
         leases: %{},
         lease_timers: %{},
         started_at_ms: now_ms()
@@ -89,54 +50,8 @@ defmodule SelfHostedInferenceCore.CrucibleRuntime.Worker do
     else
       {:error, reason} -> {:stop, reason}
     end
-  end
-
-  defp init_live(opts) do
-    loader_options = live_loader_options(opts)
-
-    case ModelLoader.load(loader_options) do
-      {:ok, bundle} ->
-        tap_plan = Live.forward_tap_plan()
-        preflight = Preflight.run!(bundle, tap_plan)
-
-        state = %{
-          provider: :elixir_bumblebee,
-          id: Keyword.fetch!(opts, :id),
-          model_ref: bundle.model_id,
-          backend: bundle.backend,
-          surface: preflight.surface,
-          tap_plan: tap_plan,
-          forward_serving: nil,
-          generation_runner: nil,
-          model_bundle: bundle,
-          loader_options: loader_options,
-          capability_report: preflight.capability_report,
-          ready?: true,
-          tokenizer_loaded?: true,
-          model_loaded?: true,
-          last_forward_ok?: false,
-          last_error: nil,
-          state_machine: [
-            :init,
-            :select_backend,
-            :load_tokenizer,
-            :load_model,
-            :preflight_surface,
-            :compile_tap_plan,
-            :ready
-          ],
-          leases: %{},
-          lease_timers: %{},
-          started_at_ms: now_ms()
-        }
-
-        {:ok, state}
-
-      {:error, reason} ->
-        {:stop, reason}
-    end
   rescue
-    error -> {:stop, {:live_model_start_failed, Exception.message(error)}}
+    error -> {:stop, {:provider_start_failed, Exception.message(error)}}
   end
 
   @impl true
@@ -163,8 +78,9 @@ defmodule SelfHostedInferenceCore.CrucibleRuntime.Worker do
         metadata: %{
           runtime: state.id,
           runtime_pid: self(),
-          backend: state.backend,
-          surface: state.surface.id,
+          provider_kind: provider_kind(state),
+          backend: backend(state),
+          surface: surface_id(state),
           capabilities: capabilities(state)
         }
       )
@@ -189,62 +105,30 @@ defmodule SelfHostedInferenceCore.CrucibleRuntime.Worker do
     {:reply, :ok, release_lease(state, lease_ref)}
   end
 
-  def handle_call(
-        {:forward, _tap_plan, input, opts},
-        _from,
-        %{ready?: true, provider: :elixir_bumblebee} = state
-      ) do
-    {result, state} = run_live_forward(state, input, opts)
-    {:reply, result, state}
-  end
-
   def handle_call({:forward, _tap_plan, input, opts}, _from, %{ready?: true} = state) do
-    result =
-      ForwardRunner.run_serving(
-        state.forward_serving,
-        input,
-        Keyword.merge([trace_id: trace_id(state), model_ref: state.model_ref], opts)
-      )
+    opts = Keyword.put_new(opts, :trace_id, trace_id(state))
 
-    {:reply, result, %{state | last_forward_ok?: true, last_error: nil}}
+    case state.provider_module.forward(state.provider_state, input, opts) do
+      {:ok, %Crucible.ForwardTrace{} = trace} ->
+        {:reply, {:ok, trace}, %{state | last_forward_ok?: true, last_error: nil}}
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, %{state | last_forward_ok?: false, last_error: reason}}
+    end
   end
 
   def handle_call({:forward, _tap_plan, _input, _opts}, _from, state) do
     {:reply, {:error, :not_ready}, state}
   end
 
-  def handle_call(
-        {:generate, _tap_plan, input, opts},
-        _from,
-        %{ready?: true, provider: :elixir_bumblebee} = state
-      ) do
-    {result, state} = run_live_generation(state, input, opts)
-    {:reply, result, state}
-  end
-
   def handle_call({:generate, _tap_plan, input, opts}, _from, %{ready?: true} = state) do
-    steering_plan = Keyword.get(opts, :steering_plan)
+    case state.provider_module.generate(state.provider_state, input, opts) do
+      {:ok, result} ->
+        {:reply, {:ok, result}, %{state | last_error: nil}}
 
-    result =
-      case state.generation_runner do
-        nil ->
-          {:error, :generation_unavailable}
-
-        runner ->
-          GenerationRunner.generate(
-            runner,
-            input,
-            steering_plan,
-            state.surface,
-            Keyword.put(
-              opts,
-              :custom_loop,
-              Keyword.get(opts, :custom_loop, is_function(runner, 2))
-            )
-          )
-      end
-
-    {:reply, result, state}
+      {:error, reason} ->
+        {:reply, {:error, reason}, %{state | last_error: reason}}
+    end
   end
 
   def handle_call({:generate, _tap_plan, _input, _opts}, _from, state) do
@@ -270,56 +154,28 @@ defmodule SelfHostedInferenceCore.CrucibleRuntime.Worker do
     :ok
   end
 
-  defp resolve_surface(opts) do
-    surface_module = Keyword.get(opts, :surface_module, ExampleSurface)
-    surface_opts = Keyword.get(opts, :surface_opts, num_blocks: 1)
-
-    {:ok, surface_module.surface(surface_opts)}
-  rescue
-    error -> {:error, {:surface_start_failed, Exception.message(error)}}
-  end
-
-  defp resolve_tap_plan(opts) do
-    case Keyword.get(opts, :serving_tap_plan) do
-      %TapPlan{} = tap_plan ->
-        {:ok, tap_plan}
-
+  defp resolve_provider_module(opts) do
+    case Keyword.get(opts, :provider_module, Keyword.get(opts, :provider)) do
       nil ->
-        {:ok,
-         TapPlan.new!(
-           [
-             [id: "hidden", signal_type: :middle_residuals, layers: [0]],
-             [id: "logits", signal_type: :final_logits, layers: [:final]]
-           ],
-           plan_id: @default_tap_plan_id
-         )}
+        if Keyword.get(opts, :live_model?, false) do
+          {:error, :missing_live_crucible_provider}
+        else
+          {:ok, FixtureProvider}
+        end
+
+      provider_module when is_atom(provider_module) ->
+        if Code.ensure_loaded?(provider_module) do
+          {:ok, provider_module}
+        else
+          {:error, {:provider_not_loaded, provider_module}}
+        end
 
       other ->
-        {:error, {:invalid_serving_tap_plan, other}}
+        {:error, {:invalid_provider_module, other}}
     end
   end
 
-  defp compile_forward_serving(opts, %ModelSurface{} = surface, %TapPlan{} = tap_plan) do
-    predict_fun = Keyword.get(opts, :predict_fun, &default_predict_fun/1)
-
-    ForwardRunner.compile_serving(predict_fun, tap_plan,
-      model_ref: Keyword.get(opts, :model_ref, "model:fixture"),
-      surface: surface,
-      serving_ref: "crucible-serving:#{Keyword.fetch!(opts, :id)}"
-    )
-  end
-
-  defp default_predict_fun(_input) do
-    %{
-      logits: Nx.tensor([[0.1, 0.4, 0.2]], type: :f32),
-      hidden_states: {
-        Nx.tensor([[1.0, 0.0]], type: :f32),
-        Nx.tensor([[0.0, 1.0]], type: :f32),
-        Nx.tensor([[1.0, 1.0]], type: :f32)
-      },
-      cache: %{blocks: {:block0}}
-    }
-  end
+  defp provider_opts(opts), do: Keyword.get(opts, :provider_opts, opts)
 
   defp put_lease(state, lease_ref, lease, timer) do
     state
@@ -348,164 +204,33 @@ defmodule SelfHostedInferenceCore.CrucibleRuntime.Worker do
       id: state.id,
       ready?: state.ready?,
       runtime_id: to_string(state.id),
-      provider_kind:
-        if(state.provider == :elixir_bumblebee, do: :elixir_bumblebee, else: :fixture),
-      model_id: state.model_ref,
-      tokenizer_loaded?: state.tokenizer_loaded?,
-      model_loaded?: state.model_loaded?,
-      backend: state.backend,
-      surface: state.surface.id,
-      model_ref: state.model_ref,
+      provider_kind: provider_kind(state),
+      model_id: model_id(state),
+      tokenizer_loaded?: tokenizer_loaded?(state),
+      model_loaded?: model_loaded?(state),
+      backend: backend(state),
+      surface: surface_id(state),
       lease_count: map_size(state.leases),
       active_leases: map_size(state.leases),
       capabilities: capabilities(state),
       last_forward_ok?: state.last_forward_ok?,
       last_error: state.last_error,
-      state_machine: state.state_machine,
+      state_machine: state_machine(state),
       started_at_ms: state.started_at_ms
     }
   end
 
-  defp capabilities(%{capability_report: %Crucible.CapabilityReport{} = report}), do: report
+  defp capabilities(state), do: state.provider_module.capabilities(state.provider_state)
+  defp provider_kind(state), do: state.provider_module.provider_kind(state.provider_state)
+  defp model_id(state), do: state.provider_module.model_id(state.provider_state)
+  defp backend(state), do: state.provider_module.backend(state.provider_state)
+  defp surface_id(state), do: state.provider_module.surface_id(state.provider_state)
+  defp tokenizer_loaded?(state), do: state.provider_module.tokenizer_loaded?(state.provider_state)
+  defp model_loaded?(state), do: state.provider_module.model_loaded?(state.provider_state)
+  defp state_machine(state), do: state.provider_module.state_machine(state.provider_state)
 
-  defp capabilities(state) do
-    state.surface.capabilities
-    |> Map.put(:backend, state.backend)
-    |> Map.put(:surface, state.surface.id)
-  end
-
-  defp run_live_forward(state, input, opts) do
-    prompt = prompt_from_input(input)
-    name = Keyword.get(opts, :trace_name, "hosted_runtime_#{state.id}")
-    trace_id = "tr_#{System.unique_integer([:positive])}"
-    run_id = "run_#{System.unique_integer([:positive])}"
-    root = state.loader_options.artifact_root
-    trace_path = CrucibleArtifacts.trace_path(name, root: root)
-    report_path = CrucibleArtifacts.capability_report_path(name, root: root)
-    started = System.monotonic_time(:millisecond)
-    forward_started = System.monotonic_time(:millisecond)
-
-    TraceWriter.reset!(trace_path)
-    TraceWriter.write_capability_report!(report_path, capabilities(state))
-
-    TraceWriter.write!(trace_path, :trace_start,
-      trace_id: trace_id,
-      run_id: run_id,
-      provider_kind: :elixir_bumblebee,
-      model_id: state.model_bundle.model_id,
-      model_family: state.model_bundle.model_family,
-      backend: state.model_bundle.backend,
-      hosted_runtime_id: to_string(state.id)
-    )
-
-    TraceWriter.write!(trace_path, :provider_capability_report,
-      trace_id: trace_id,
-      capability_report: capabilities(state),
-      capability_report_digest: Crucible.CanonicalJSON.digest(capabilities(state))
-    )
-
-    TraceWriter.write!(trace_path, :forward_start,
-      trace_id: trace_id,
-      prompt_digest: CrucibleSignalTrace.Digest.prefixed_text(prompt)
-    )
-
-    logits = Live.run_logits(state.model_bundle, prompt)
-
-    signal =
-      TraceWriter.signal_from_logits(logits, %{
-        signal_id: "sig_final_logits",
-        trace_id: trace_id,
-        run_id: run_id,
-        model_id: state.model_bundle.model_id,
-        model_family: state.model_bundle.model_family,
-        model_revision: state.model_bundle.revision,
-        backend: state.model_bundle.backend,
-        capture_method: :hosted_loaded_bundle
-      })
-
-    TraceWriter.write!(trace_path, :signal_record, trace_id: trace_id, signal: signal)
-
-    TraceWriter.write!(trace_path, :forward_end,
-      trace_id: trace_id,
-      forward_time_ms: elapsed_ms(forward_started)
-    )
-
-    TraceWriter.write!(trace_path, :trace_end,
-      trace_id: trace_id,
-      status: :ok,
-      duration_ms: elapsed_ms(started)
-    )
-
-    trace = CrucibleSignalTrace.Ingest.from_jsonl!(trace_path, [])
-
-    {{:ok, trace}, %{state | last_forward_ok?: true, last_error: nil}}
-  rescue
-    error ->
-      reason = Exception.message(error)
-      {{:error, reason}, %{state | last_forward_ok?: false, last_error: reason}}
-  end
-
-  defp run_live_generation(%{model_bundle: %{model_family: family}} = state, input, opts)
-       when family in [:gpt2, :qwen3] do
-    prompt = prompt_from_input(input)
-
-    case ManualGeneration.run(state.model_bundle, prompt,
-           max_new_tokens:
-             Keyword.get(opts, :max_new_tokens, state.loader_options.max_new_tokens || 1),
-           strategy: Keyword.get(opts, :generation_strategy, :greedy),
-           seed: Keyword.get(opts, :seed, state.loader_options.seed),
-           stop_token_ids: Keyword.get(opts, :stop_token_ids, [])
-         ) do
-      {:ok, generation} ->
-        result = %{
-          model_id: state.model_bundle.model_id,
-          backend: state.model_bundle.backend,
-          generated_token_ids: generation.generated_token_ids,
-          decoded_text: generation.decoded_text,
-          step_count: length(generation.steps),
-          success_level: :generation_step_logits
-        }
-
-        {{:ok, result}, %{state | last_error: nil}}
-
-      {:error, reason} ->
-        {{:error, reason}, %{state | last_error: reason}}
-    end
-  end
-
-  defp run_live_generation(state, _input, _opts) do
-    reason = {:generation_unavailable_for_model_family, state.model_bundle.model_family}
-    {{:error, reason}, %{state | last_error: reason}}
-  end
-
-  defp prompt_from_input(%{prompt: prompt}) when is_binary(prompt), do: prompt
-  defp prompt_from_input(%{"prompt" => prompt}) when is_binary(prompt), do: prompt
-  defp prompt_from_input(prompt) when is_binary(prompt), do: prompt
-  defp prompt_from_input(_input), do: "Hi"
-
-  defp trace_id(state), do: "crucible-runtime:#{state.id}:#{System.unique_integer([:positive])}"
-
-  defp live_loader_options(opts) do
-    opts
-    |> Keyword.take([
-      :model_id,
-      :tokenizer_id,
-      :revision,
-      :backend,
-      :offline?,
-      :cache_dir,
-      :prompt,
-      :max_new_tokens,
-      :seed,
-      :artifact_root,
-      :architecture,
-      :module,
-      :diagnostic_path
-    ])
-    |> Options.from_env()
-  end
-
-  defp elapsed_ms(start_ms), do: System.monotonic_time(:millisecond) - start_ms
+  defp trace_id(state),
+    do: "crucible-runtime:#{state.id}:#{System.unique_integer([:positive])}"
 
   defp cancel_timer(nil), do: :ok
   defp cancel_timer(timer), do: Process.cancel_timer(timer)

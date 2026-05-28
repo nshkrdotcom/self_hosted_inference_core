@@ -1,8 +1,9 @@
 defmodule SelfHostedInferenceCore.Examples.CrucibleRuntimeLadderLive do
   @moduledoc false
 
-  alias CrucibleBumblebee.{Artifacts, LiveMatrix}
   alias SelfHostedInferenceCore.CrucibleRuntime
+
+  @default_models ["hf-internal-testing/tiny-random-gpt2"]
 
   def main(argv) do
     argv = normalize_argv(argv)
@@ -12,7 +13,8 @@ defmodule SelfHostedInferenceCore.Examples.CrucibleRuntimeLadderLive do
       OptionParser.parse(argv,
         strict: [
           backend: :string,
-          rungs: :string,
+          models: :string,
+          provider_module: :string,
           artifact_root: :string,
           forward_timeout_ms: :integer,
           generation_timeout_ms: :integer,
@@ -20,79 +22,84 @@ defmodule SelfHostedInferenceCore.Examples.CrucibleRuntimeLadderLive do
         ]
       )
 
-    if System.get_env("CRUCIBLE_LIVE_MODEL") in ["1", "true"] do
-      run_live(opts, gate?)
-    else
-      IO.inspect(%{
-        ok: true,
-        example: "crucible_runtime_ladder_live",
-        skipped: true,
-        reason: :live_not_enabled,
-        run: "CRUCIBLE_LIVE_MODEL=true mix run examples/crucible_runtime_ladder_live.exs"
-      })
+    case provider_module(opts) do
+      {:ok, module} ->
+        run_live(module, opts, gate?)
 
-      if gate?, do: System.halt(1)
+      {:error, reason} ->
+        IO.inspect(%{ok: false, example: "crucible_runtime_ladder_live", reason: reason})
+        if gate?, do: System.halt(2)
     end
   end
 
-  defp run_live(opts, gate?) do
-    root = Keyword.get(opts, :artifact_root)
+  defp run_live(provider_module, opts, gate?) do
+    root = Keyword.get(opts, :artifact_root, "tmp/crucible_runtime_ladder")
     backend = Keyword.get(opts, :backend, "binary")
     forward_timeout_ms = Keyword.get(opts, :forward_timeout_ms, 240_000)
     generation_timeout_ms = Keyword.get(opts, :generation_timeout_ms, 240_000)
-
-    Artifacts.ensure_layout!(root: root)
+    File.mkdir_p!(Path.join(root, "model_matrix"))
+    File.mkdir_p!(Path.join(root, "reports"))
 
     rows =
       opts
       |> models()
-      |> Enum.map(fn model ->
-        run_model(model, backend, root, forward_timeout_ms, generation_timeout_ms)
+      |> Enum.map(fn model_id ->
+        run_model(provider_module, model_id, backend, root, forward_timeout_ms, generation_timeout_ms)
       end)
 
     report_path = write_report!(rows, root)
-
-    result = %{
-      ok: Enum.all?(rows, &(&1.result == "passed")),
-      rows: rows,
-      report_path: report_path
-    }
-
+    result = %{ok: Enum.all?(rows, &(&1.result == "passed")), rows: rows, report_path: report_path}
     IO.inspect(result)
 
     if gate? and not result.ok, do: System.halt(7)
   end
 
-  defp models(opts) do
-    LiveMatrix.model_ladder()
-    |> Enum.reject(&Map.has_key?(&1, :expected_blocker))
-    |> then(fn models ->
-      case Keyword.get(opts, :rungs) do
-        nil ->
-          models
+  defp provider_module(opts) do
+    module_name =
+      Keyword.get(
+        opts,
+        :provider_module,
+        "SelfHostedInferenceBumblebee.CrucibleProvider"
+      )
 
-        rungs ->
-          allowed = rungs |> String.split(",", trim: true) |> MapSet.new()
-          Enum.filter(models, &MapSet.member?(allowed, &1.rung))
+    provider =
+      case module_name do
+        "SelfHostedInferenceCore.CrucibleRuntime.FixtureProvider" ->
+          SelfHostedInferenceCore.CrucibleRuntime.FixtureProvider
+
+        "SelfHostedInferenceBumblebee.CrucibleProvider" ->
+          SelfHostedInferenceBumblebee.CrucibleProvider
+
+        other ->
+          {:unsupported_provider_module, other}
       end
-    end)
+
+    if is_atom(provider) and Code.ensure_loaded?(provider) do
+      {:ok, provider}
+    else
+      {:error, {:provider_not_loaded, provider}}
+    end
   end
 
-  defp run_model(model, backend, root, forward_timeout_ms, generation_timeout_ms) do
-    id = :"crucible-runtime-ladder-#{model.rung}-#{System.unique_integer([:positive])}"
+  defp models(opts) do
+    opts
+    |> Keyword.get(:models, Enum.join(@default_models, ","))
+    |> String.split(",", trim: true)
+  end
+
+  defp run_model(provider_module, model_id, backend, root, forward_timeout_ms, generation_timeout_ms) do
+    id = :"crucible-runtime-ladder-#{System.unique_integer([:positive])}"
     started = System.monotonic_time(:millisecond)
 
-    with {:ok, pid} <- start_runtime(model, id, backend, root),
+    with {:ok, pid} <- start_runtime(provider_module, model_id, id, backend, root),
          true <- CrucibleRuntime.ready?(pid),
-         {:ok, lease} <- CrucibleRuntime.lease(pid, owner_ref: "v5-hosted-ladder"),
-         {:ok, trace} <- forward(pid, model, backend, forward_timeout_ms) do
-      generation = maybe_generate(pid, model, generation_timeout_ms)
+         {:ok, lease} <- CrucibleRuntime.lease(pid, owner_ref: "hosted-ladder"),
+         {:ok, trace} <- forward(pid, model_id, backend, forward_timeout_ms) do
+      generation = maybe_generate(pid, generation_timeout_ms)
       :ok = CrucibleRuntime.release(lease)
 
       row = %{
-        rung: model.rung,
-        model_id: model.model_id,
-        family: model.family,
+        model_id: model_id,
         backend: backend,
         hosted_runtime: true,
         ready: true,
@@ -111,57 +118,51 @@ defmodule SelfHostedInferenceCore.Examples.CrucibleRuntimeLadderLive do
       row
     else
       false ->
-        row = failed_row(model, backend, :not_ready, started)
+        row = failed_row(model_id, backend, :not_ready, started)
         write_row!(row, root)
         row
 
       {:error, reason} ->
-        row = failed_row(model, backend, reason, started)
+        row = failed_row(model_id, backend, reason, started)
         write_row!(row, root)
         row
     end
   end
 
-  defp start_runtime(model, id, backend, root) do
+  defp start_runtime(provider_module, model_id, id, backend, root) do
     CrucibleRuntime.start_child(
       id: id,
-      live_model?: true,
-      model_id: model.model_id,
-      tokenizer_id: Map.get(model, :tokenizer_id, model.model_id),
-      backend: backend,
-      architecture: model.architecture,
-      module: Map.get(model, :module),
-      artifact_root: root,
-      max_new_tokens: 1
+      provider_module: provider_module,
+      provider_opts: [
+        model_id: model_id,
+        tokenizer_id: model_id,
+        backend: backend,
+        artifact_root: root,
+        max_new_tokens: 1
+      ]
     )
   end
 
-  defp forward(pid, model, backend, timeout_ms) do
+  defp forward(pid, model_id, backend, timeout_ms) do
     CrucibleRuntime.forward(pid, nil, %{prompt: "Hi"},
-      trace_name: "#{model.rung}_#{Artifacts.safe_name(model.model_id)}_#{backend}",
+      trace_name: "#{safe_name(model_id)}_#{backend}",
       timeout: timeout_ms
     )
   end
 
-  defp maybe_generate(pid, %{family: family}, timeout_ms) when family in [:gpt2, :qwen3] do
+  defp maybe_generate(pid, timeout_ms) do
     case CrucibleRuntime.generate(pid, nil, "Hi", max_new_tokens: 1, timeout: timeout_ms) do
       {:ok, result} ->
-        %{ok: true, result: "passed", step_count: result.step_count}
+        %{ok: true, result: "passed", step_count: Map.get(result, :step_count, 0)}
 
       {:error, reason} ->
         %{ok: false, result: inspect(reason), step_count: 0}
     end
   end
 
-  defp maybe_generate(_pid, _model, _timeout_ms) do
-    %{ok: false, result: "non_causal_generation", step_count: 0}
-  end
-
-  defp failed_row(model, backend, reason, started) do
+  defp failed_row(model_id, backend, reason, started) do
     %{
-      rung: model.rung,
-      model_id: model.model_id,
-      family: model.family,
+      model_id: model_id,
       backend: backend,
       hosted_runtime: true,
       ready: false,
@@ -175,16 +176,16 @@ defmodule SelfHostedInferenceCore.Examples.CrucibleRuntimeLadderLive do
   end
 
   defp write_row!(row, root) do
-    Artifacts.append_jsonl!(:model_matrix, "hosted_runtime_ladder.jsonl", row, root: root)
+    path = Path.join([root, "model_matrix", "hosted_runtime_ladder.jsonl"])
+    File.mkdir_p!(Path.dirname(path))
+    File.write!(path, Jason.encode!(row) <> "\n", [:append])
   end
 
   defp write_report!(rows, root) do
-    path = Artifacts.path!(:reports, "hosted_runtime_matrix.md", root: root)
+    path = Path.join([root, "reports", "hosted_runtime_matrix.md"])
 
     columns = [
-      {:rung, "rung"},
       {:model_id, "model_id"},
-      {:family, "family"},
       {:backend, "backend"},
       {:result, "result"},
       {:ready, "ready"},
@@ -217,12 +218,28 @@ defmodule SelfHostedInferenceCore.Examples.CrucibleRuntimeLadderLive do
       ]
       |> IO.iodata_to_binary()
 
+    File.mkdir_p!(Path.dirname(path))
     File.write!(path, body)
     path
   end
 
   defp cell(nil), do: ""
   defp cell(value), do: value |> to_string() |> String.replace("|", "\\|")
+
+  defp safe_name(name) do
+    name
+    |> String.downcase()
+    |> String.to_charlist()
+    |> Enum.map(&safe_char/1)
+    |> to_string()
+    |> String.trim("_")
+  end
+
+  defp safe_char(char)
+       when char in ?a..?z or char in ?0..?9 or char in [?_, ?., ?-],
+       do: char
+
+  defp safe_char(_char), do: ?_
 
   defp normalize_argv(["--" | rest]), do: rest
   defp normalize_argv(args), do: args

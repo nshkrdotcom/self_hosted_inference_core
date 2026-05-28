@@ -1,16 +1,21 @@
 # Crucible Runtime
 
-`SelfHostedInferenceCore.CrucibleRuntime` supervises Bumblebee-backed Crucible
+`SelfHostedInferenceCore.CrucibleRuntime` supervises provider-backed Crucible
 workers under `SelfHostedInferenceCore.CrucibleRuntimeSupervisor`.
 
 Workers register under `{SelfHostedInferenceCore.CrucibleRuntime, id}` in the
-existing process registry, which avoids collisions with legacy `{:instance,
-id}` and adapter registry keys.
+existing process registry, which keeps Crucible runtime ids separate from
+service instance ids and adapter registry keys.
 
-At startup a worker resolves its `ModelSurface`, runs surface preflight through
-`crucible_bumblebee`, negotiates the canonical serving tap plan, and compiles
-one forward serving. Per-request tap changes should remain post-processing
-filters unless the configured surface advertises dynamic hooks.
+At startup a worker resolves its configured provider module and calls the
+provider lifecycle. The core runtime never loads model assets directly; concrete
+providers own model loading, preflight, signal extraction, trace writing, and
+generation.
+
+Offline tests and examples use
+`SelfHostedInferenceCore.CrucibleRuntime.FixtureProvider`. Live Bumblebee model
+execution is implemented outside the kernel by
+`SelfHostedInferenceBumblebee.CrucibleProvider`.
 
 The public API includes:
 

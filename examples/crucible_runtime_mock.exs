@@ -1,11 +1,13 @@
 alias SelfHostedInferenceCore.CrucibleRuntime
+alias SelfHostedInferenceCore.CrucibleRuntime.FixtureProvider
 
 id = :"crucible-runtime-example-#{System.unique_integer([:positive])}"
 
 {:ok, pid} =
   CrucibleRuntime.start_child(
     id: id,
-    model_ref: "model:fixture"
+    provider_module: FixtureProvider,
+    provider_opts: [model_id: "model:fixture"]
   )
 
 {:ok, lease} = CrucibleRuntime.lease(pid, owner_ref: "example")
@@ -16,6 +18,6 @@ IO.inspect(%{
   ok: true,
   example: "crucible_runtime_mock",
   runtime: id,
-  signal_count: length(trace.signal_records),
+  signal_count: length(trace.signals),
   ready?: CrucibleRuntime.ready?(pid)
 })

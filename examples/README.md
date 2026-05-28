@@ -71,12 +71,14 @@ CRUCIBLE_LIVE_MODEL=1 mix run examples/crucible_runtime_live.exs
 
 ## Crucible Runtime Live Ladder
 
-`crucible_runtime_ladder_live.exs` runs the V5 hosted runtime ladder over the
-native model rungs that passed standalone Bumblebee forward execution. It
-loads each model in a supervised runtime, checks readiness, acquires a lease,
-runs hosted forward, attempts one-step generation for causal models, releases
-the lease, and writes hosted matrix artifacts.
+`crucible_runtime_ladder_live.exs` runs a hosted runtime ladder through an
+explicit provider module. It loads each model in a supervised runtime, checks
+readiness, acquires a lease, runs hosted forward, attempts one-step generation,
+releases the lease, and writes hosted matrix artifacts.
 
 ```bash
-CRUCIBLE_LIVE_MODEL=1 mix run examples/crucible_runtime_ladder_live.exs -- --backend binary
+CRUCIBLE_LIVE_MODEL=1 mix run examples/crucible_runtime_ladder_live.exs -- \
+  --provider-module SelfHostedInferenceBumblebee.CrucibleProvider \
+  --models hf-internal-testing/tiny-random-gpt2 \
+  --backend binary
 ```

@@ -221,26 +221,24 @@ HexDocs includes:
 
 Released under the MIT License. See `LICENSE`.
 
-## V5 Status
+## Crucible Runtime Status
 
-Status: `hosted-runtime-ladder-passing`.
+Status: `provider-boundary-in-progress`.
 
-`SelfHostedInferenceCore.CrucibleRuntime` can start a live native Bumblebee
-worker with `live_model?: true`. Readiness is true only after the tokenizer,
-model parameters, backend, surface preflight, and tap plan are loaded. The V5
-runtime path runs forward against the already-loaded worker bundle and supports
-one-step hosted manual generation for causal models.
+`SelfHostedInferenceCore.CrucibleRuntime` is provider-neutral. The kernel owns
+supervision, readiness, leases, health snapshots, and request delegation.
+Concrete provider packages own model loading, preflight, signal extraction,
+trace writing, and generation.
 
-The live gates are:
+The provider-bound live gate shape is:
 
 ```bash
-CRUCIBLE_LIVE_MODEL=true mix test --only live_cpu_heavy
-CRUCIBLE_LIVE_MODEL=true CRUCIBLE_BUMBLEBEE_MODEL_ID=gpt2 mix test --only live_cpu_heavy
-CRUCIBLE_LIVE_MODEL=true mix run examples/crucible_runtime_ladder_live.exs -- --backend binary
+CRUCIBLE_LIVE_MODEL=true mix run examples/crucible_runtime_live.exs -- \
+  --provider-module SelfHostedInferenceBumblebee.CrucibleProvider \
+  --model hf-internal-testing/tiny-random-gpt2 \
+  --backend binary
 ```
 
-Phase artifacts are recorded under `tmp/crucible_v5/`, including
-`tmp/crucible_v5/transcripts/self_hosted_inference_core_live_tiny_phase13_final.log`,
-`tmp/crucible_v5/transcripts/self_hosted_inference_core_live_gpt2_phase13_final.log`,
-and
-`tmp/crucible_v5/transcripts/self_hosted_inference_core_hosted_ladder_phase13_final.log`.
+Live model proof artifacts are provider-owned. The core package only requires
+that providers return canonical `%Crucible.ForwardTrace{}` values and explicit
+generation results or structured errors.
