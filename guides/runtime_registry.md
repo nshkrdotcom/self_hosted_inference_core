@@ -18,7 +18,7 @@ behavior, for example:
 - model identity
 - attach target
 - placement-relevant execution surface details
-- launch knobs that affect compatibility or reuse
+- launch knobs that affect consumer fit or reuse
 
 If two requests resolve to the same `instance_key`, they target the same
 runtime instance.
@@ -30,7 +30,7 @@ runtime instance.
 1. creates a new runtime when no matching instance exists
 2. reuses the existing runtime when the instance key already exists
 
-That lets higher layers ask for a compatible runtime repeatedly without
+That lets higher layers ask for a matching runtime repeatedly without
 re-implementing deduplication or readiness bookkeeping.
 
 ## Lease Semantics

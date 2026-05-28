@@ -44,7 +44,7 @@ Kernel ownership stays above the transport seam:
 - health polling and interpretation
 - lease tracking
 - endpoint publication
-- compatibility calculation
+- consumer-fit evaluation
 
 ### Concrete backend packages
 
@@ -76,7 +76,7 @@ The kernel follows one service-oriented loop for both startup kinds:
 The kernel exposes four primary outputs to higher layers:
 
 - `BackendManifest`
-- `CompatibilityResult`
+- consumer-fit result
 - `EndpointDescriptor`
 - `LeaseRef`
 
@@ -96,7 +96,7 @@ It then:
 1. derives an `InstanceSpec`
 2. ensures or reuses the service runtime
 3. publishes an `EndpointDescriptor`
-4. returns the endpoint plus `CompatibilityResult`
+4. returns the endpoint plus the consumer-fit result
 
 ## Why The Kernel Is Separate
 

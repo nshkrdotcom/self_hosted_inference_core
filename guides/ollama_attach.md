@@ -14,7 +14,7 @@ without forcing a separate package too early.
 - daemon reachability checks through `/api/version`
 - model-availability checks through `/api/show`
 - warm-versus-cold health interpretation through `/api/ps`
-- OpenAI-compatible endpoint publication at `#{root_url}/v1`
+- OpenAI-shaped endpoint publication at `#{root_url}/v1`
 
 It does not own request execution. Once the endpoint is published, callers
 should execute through `req_llm`.
@@ -61,7 +61,7 @@ Readiness stays attach-oriented:
 
 1. poll `/api/version` until the daemon is reachable
 2. poll `/api/show` until the requested model is available
-3. publish the OpenAI-compatible endpoint only after both checks succeed
+3. publish the OpenAI-shaped endpoint only after both checks succeed
 
 That keeps the route honest when the daemon is already running but the model is
 still being pulled or loaded.

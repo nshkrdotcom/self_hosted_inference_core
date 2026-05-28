@@ -29,7 +29,7 @@ backend-specific boot logic:
 - health monitoring
 - lease and reuse semantics
 - endpoint publication
-- backend-to-consumer compatibility calculation
+- backend-to-consumer fit evaluation
 
 It does **not** own transport mechanics or client protocol execution.
 `execution_plane` owns process placement, IO lifecycle, and raw process facts.
@@ -188,7 +188,7 @@ context = %{
   observability: %{trace_id: "trace-123"}
 }
 
-{:ok, endpoint, compatibility} =
+{:ok, endpoint, fit_result} =
   SelfHostedInferenceCore.ensure_endpoint(
     request,
     consumer,
@@ -199,7 +199,7 @@ context = %{
 
 endpoint.base_url
 endpoint.lease_ref
-compatibility.reason
+fit_result.reason
 ```
 
 See [`examples/README.md`](examples/README.md) for runnable demos covering both
