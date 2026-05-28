@@ -49,17 +49,20 @@ defmodule SelfHostedInferenceCore.CrucibleRuntime do
   @spec lease(runtime_ref(), keyword()) :: {:ok, lease()} | {:error, term()}
   def lease(runtime_ref, opts \\ []), do: GenServer.call(runtime_ref, {:lease, opts})
 
-  @spec release(lease()) :: :ok
-  def release(%LeaseRef{lease_ref: lease_ref, metadata: %{runtime_pid: pid}}) when is_pid(pid) do
-    GenServer.call(pid, {:release, lease_ref})
-  end
+  @spec release(lease(), keyword()) :: :ok
+  def release(lease, opts \\ [])
 
-  def release(%LeaseRef{lease_ref: lease_ref, metadata: %{"runtime_pid" => pid}})
+  def release(%LeaseRef{lease_ref: lease_ref, metadata: %{runtime_pid: pid}}, opts)
       when is_pid(pid) do
-    GenServer.call(pid, {:release, lease_ref})
+    GenServer.call(pid, {:release, lease_ref}, call_timeout(opts))
   end
 
-  def release(%LeaseRef{}), do: :ok
+  def release(%LeaseRef{lease_ref: lease_ref, metadata: %{"runtime_pid" => pid}}, opts)
+      when is_pid(pid) do
+    GenServer.call(pid, {:release, lease_ref}, call_timeout(opts))
+  end
+
+  def release(%LeaseRef{}, _opts), do: :ok
 
   @spec release(runtime_ref(), String.t()) :: :ok
   def release(runtime_ref, lease_ref), do: GenServer.call(runtime_ref, {:release, lease_ref})
