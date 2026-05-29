@@ -23,4 +23,14 @@ defmodule SelfHostedInferenceCore.CrucibleRuntime.Provider do
   @callback tokenizer_loaded?(state()) :: boolean()
   @callback model_loaded?(state()) :: boolean()
   @callback state_machine(state()) :: [atom()]
+
+  @callback surface(state(), keyword()) ::
+              {:ok, CrucibleTap.Surface.t()} | {:error, term()}
+
+  @callback compile_tap_plan(state(), CrucibleTap.TapPlan.t(), keyword()) ::
+              {:ok, CrucibleTap.CompiledPlan.t(), Crucible.CapabilityReport.t()}
+              | {:error, {:tap_compile_failed, Crucible.CapabilityReport.t()}}
+              | {:error, term()}
+
+  @optional_callbacks surface: 2, compile_tap_plan: 3
 end

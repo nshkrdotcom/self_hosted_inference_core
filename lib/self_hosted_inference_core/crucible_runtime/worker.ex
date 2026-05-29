@@ -105,12 +105,23 @@ defmodule SelfHostedInferenceCore.CrucibleRuntime.Worker do
     {:reply, :ok, release_lease(state, lease_ref)}
   end
 
-  def handle_call({:forward, _tap_plan, input, opts}, _from, %{ready?: true} = state) do
-    opts = Keyword.put_new(opts, :trace_id, trace_id(state))
+  def handle_call({:forward, tap_plan, input, opts}, _from, %{ready?: true} = state) do
+    opts =
+      opts
+      |> Keyword.put_new(:trace_id, trace_id(state))
+      |> maybe_put_tap_plan(tap_plan)
 
     case state.provider_module.forward(state.provider_state, input, opts) do
       {:ok, %Crucible.ForwardTrace{} = trace} ->
-        {:reply, {:ok, trace}, %{state | last_forward_ok?: true, last_error: nil}}
+        case CrucibleSignalTrace.validate_forward_trace(trace, :shape) do
+          :ok ->
+            {:reply, {:ok, trace}, %{state | last_forward_ok?: true, last_error: nil}}
+
+          {:error, reason} ->
+            error = {:invalid_trace, reason}
+
+            {:reply, {:error, error}, %{state | last_forward_ok?: false, last_error: error}}
+        end
 
       {:error, reason} ->
         {:reply, {:error, reason}, %{state | last_forward_ok?: false, last_error: reason}}
@@ -121,7 +132,9 @@ defmodule SelfHostedInferenceCore.CrucibleRuntime.Worker do
     {:reply, {:error, :not_ready}, state}
   end
 
-  def handle_call({:generate, _tap_plan, input, opts}, _from, %{ready?: true} = state) do
+  def handle_call({:generate, tap_plan, input, opts}, _from, %{ready?: true} = state) do
+    opts = Keyword.put(opts, :tap_plan, tap_plan)
+
     case state.provider_module.generate(state.provider_state, input, opts) do
       {:ok, result} ->
         {:reply, {:ok, result}, %{state | last_error: nil}}
@@ -228,6 +241,9 @@ defmodule SelfHostedInferenceCore.CrucibleRuntime.Worker do
   defp tokenizer_loaded?(state), do: state.provider_module.tokenizer_loaded?(state.provider_state)
   defp model_loaded?(state), do: state.provider_module.model_loaded?(state.provider_state)
   defp state_machine(state), do: state.provider_module.state_machine(state.provider_state)
+
+  defp maybe_put_tap_plan(opts, nil), do: opts
+  defp maybe_put_tap_plan(opts, tap_plan), do: Keyword.put(opts, :tap_plan, tap_plan)
 
   defp trace_id(state),
     do: "crucible-runtime:#{state.id}:#{System.unique_integer([:positive])}"

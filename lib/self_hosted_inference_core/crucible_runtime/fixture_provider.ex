@@ -9,6 +9,9 @@ defmodule SelfHostedInferenceCore.CrucibleRuntime.FixtureProvider do
 
   @behaviour SelfHostedInferenceCore.CrucibleRuntime.Provider
 
+  alias Crucible.CapabilityReport
+  alias CrucibleTap.{Surface, TapPlan}
+
   @default_model_id "model:fixture"
   @surface_id :example_transformer
   @model_family :example_transformer
@@ -33,41 +36,43 @@ defmodule SelfHostedInferenceCore.CrucibleRuntime.FixtureProvider do
 
   @impl true
   def forward(%__MODULE__{} = state, input, opts) do
-    trace_id = Keyword.get_lazy(opts, :trace_id, &trace_id/0)
-    run_id = Keyword.get_lazy(opts, :run_id, &run_id/0)
-    outputs = state.predict_fun.(input)
-    logits = Map.fetch!(outputs, :logits)
-    prompt = prompt_from_input(input)
+    with {:ok, _compiled, capability_report} <- resolve_tap_plan(state, opts) do
+      trace_id = Keyword.get_lazy(opts, :trace_id, &trace_id/0)
+      run_id = Keyword.get_lazy(opts, :run_id, &run_id/0)
+      outputs = state.predict_fun.(input)
+      logits = Map.fetch!(outputs, :logits)
+      prompt = prompt_from_input(input)
 
-    final_logits =
-      signal_record(logits, %{
-        signal_id: "sig_final_logits",
-        trace_id: trace_id,
-        run_id: run_id,
-        signal_type: :final_logits,
-        node_name: "final_logits",
-        capture_method: :fixture_predict_fun,
-        model_id: state.model_id,
-        backend: state.backend
-      })
+      final_logits =
+        signal_record(logits, %{
+          signal_id: "sig_final_logits",
+          trace_id: trace_id,
+          run_id: run_id,
+          signal_type: :final_logits,
+          node_name: "final_logits",
+          capture_method: :fixture_predict_fun,
+          model_id: state.model_id,
+          backend: state.backend
+        })
 
-    trace =
-      Crucible.ForwardTrace.new!(
-        trace_id: trace_id,
-        run_id: run_id,
-        provider_kind: provider_kind(state),
-        model_id: state.model_id,
-        model_family: @model_family,
-        backend: state.backend,
-        prompt_digest: CrucibleSignalTrace.Digest.prefixed_text(prompt),
-        final_logits: final_logits,
-        signals: [final_logits],
-        capability_report: capabilities(state),
-        status: :ok,
-        metadata: %{surface_id: @surface_id}
-      )
+      trace =
+        Crucible.ForwardTrace.new!(
+          trace_id: trace_id,
+          run_id: run_id,
+          provider_kind: provider_kind(state),
+          model_id: state.model_id,
+          model_family: @model_family,
+          backend: state.backend,
+          prompt_digest: CrucibleSignalTrace.Digest.prefixed_text(prompt),
+          final_logits: final_logits,
+          signals: [final_logits],
+          capability_report: capability_report,
+          status: :ok,
+          metadata: forward_metadata(opts)
+        )
 
-    {:ok, trace}
+      {:ok, trace}
+    end
   rescue
     error -> {:error, {:fixture_forward_failed, Exception.message(error)}}
   end
@@ -89,6 +94,23 @@ defmodule SelfHostedInferenceCore.CrucibleRuntime.FixtureProvider do
   end
 
   @impl true
+  def surface(%__MODULE__{} = state, _opts) do
+    {:ok, fixture_surface(state)}
+  end
+
+  @impl true
+  def compile_tap_plan(%__MODULE__{} = state, %TapPlan{} = plan, opts) do
+    CapabilityReport.negotiate(
+      plan,
+      fixture_surface(state),
+      provider_kind: provider_kind(state),
+      model_id: state.model_id,
+      backend: state.backend,
+      resource_budget: Keyword.get(opts, :resource_budget)
+    )
+  end
+
+  @impl true
   def capabilities(%__MODULE__{} = state) do
     %{
       provider_kind: provider_kind(state),
@@ -97,10 +119,10 @@ defmodule SelfHostedInferenceCore.CrucibleRuntime.FixtureProvider do
       backend: state.backend,
       surface: @surface_id,
       final_logits: true,
-      hidden_states: true,
-      attentions: true,
-      cache_metadata: true,
-      token_boundary_steering: true
+      hidden_states: false,
+      attentions: false,
+      cache_metadata: false,
+      token_boundary_steering: false
     }
   end
 
@@ -178,6 +200,38 @@ defmodule SelfHostedInferenceCore.CrucibleRuntime.FixtureProvider do
     }
   end
 
+  defp resolve_tap_plan(state, opts) do
+    case Keyword.get(opts, :tap_plan) do
+      %TapPlan{} = plan ->
+        compile_tap_plan(state, plan, tap_compile_opts(state, opts))
+
+      _ ->
+        {:ok, nil, capabilities(state)}
+    end
+  end
+
+  defp tap_compile_opts(%__MODULE__{} = state, opts) do
+    opts
+    |> Keyword.take([:resource_budget])
+    |> Keyword.merge(
+      provider_kind: provider_kind(state),
+      model_id: state.model_id,
+      backend: state.backend
+    )
+  end
+
+  defp forward_metadata(opts) do
+    base = %{surface_id: @surface_id}
+
+    case Keyword.get(opts, :tap_plan) do
+      %{plan_id: plan_id} when is_binary(plan_id) ->
+        Map.put(base, :tap_plan_id, plan_id)
+
+      _ ->
+        base
+    end
+  end
+
   defp prompt_from_input(%{prompt: prompt}) when is_binary(prompt), do: prompt
   defp prompt_from_input(%{"prompt" => prompt}) when is_binary(prompt), do: prompt
   defp prompt_from_input(prompt) when is_binary(prompt), do: prompt
@@ -185,4 +239,22 @@ defmodule SelfHostedInferenceCore.CrucibleRuntime.FixtureProvider do
 
   defp trace_id, do: "tr_#{System.unique_integer([:positive])}"
   defp run_id, do: "run_#{System.unique_integer([:positive])}"
+
+  defp fixture_surface(%__MODULE__{} = state) do
+    Surface.new!(
+      adapter: :fixture,
+      model_family: @model_family,
+      metadata: %{surface_id: @surface_id, model_id: state.model_id},
+      nodes: [
+        [
+          id: "lm_head.output",
+          signal_type: :final_logits,
+          layer_name: "lm_head.output",
+          layer_index: :final,
+          operations: [:read],
+          capture_modes: [:summary]
+        ]
+      ]
+    )
+  end
 end
