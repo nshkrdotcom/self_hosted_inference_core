@@ -17,6 +17,15 @@ Offline tests and examples use
 execution is implemented outside the kernel by
 `SelfHostedInferenceBumblebee.CrucibleProvider`.
 
+Provider modules may use either the local
+`SelfHostedInferenceCore.CrucibleRuntime.Provider` behaviour or the shared
+`Crucible.Provider` ABI from `crucible_provider_contracts`. Formal
+`Crucible.Provider` modules are wrapped by
+`SelfHostedInferenceCore.CrucibleRuntime.FormalProviderAdapter`, which compiles
+tap plans before execution and carries canonical capability reports into emitted
+forward traces. Required unsupported taps fail closed before provider forward
+execution; optional unsupported taps may degrade with capability evidence.
+
 The public API includes:
 
 - `start_child/1`

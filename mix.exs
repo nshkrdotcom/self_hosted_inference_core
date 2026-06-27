@@ -46,6 +46,7 @@ defmodule SelfHostedInferenceCore.MixProject do
     [
       execution_plane_dep(),
       execution_plane_process_dep(),
+      {:crucible_provider_contracts, path: "../../North-Shore-AI/crucible_provider_contracts"},
       {:crucible_signal, path: "../../North-Shore-AI/crucible_signal"},
       {:crucible_signal_trace, path: "../../North-Shore-AI/crucible_signal_trace"},
       {:crucible_tap, path: "../../North-Shore-AI/crucible_tap"},

@@ -6,6 +6,7 @@ defmodule SelfHostedInferenceCore.CrucibleRuntime.Worker do
   alias SelfHostedInferenceCore.{
     CrucibleRuntime,
     CrucibleRuntime.FixtureProvider,
+    CrucibleRuntime.FormalProviderAdapter,
     LeaseRef
   }
 
@@ -32,8 +33,8 @@ defmodule SelfHostedInferenceCore.CrucibleRuntime.Worker do
   def init(opts) do
     Process.flag(:trap_exit, true)
 
-    with {:ok, provider_module} <- resolve_provider_module(opts),
-         {:ok, provider_state} <- provider_module.init(provider_opts(opts)) do
+    with {:ok, provider_module, provider_init_opts} <- resolve_provider(opts),
+         {:ok, provider_state} <- provider_module.init(provider_init_opts) do
       state = %{
         id: Keyword.fetch!(opts, :id),
         provider_module: provider_module,
@@ -167,20 +168,19 @@ defmodule SelfHostedInferenceCore.CrucibleRuntime.Worker do
     :ok
   end
 
-  defp resolve_provider_module(opts) do
+  defp resolve_provider(opts) do
     case Keyword.get(opts, :provider_module, Keyword.get(opts, :provider)) do
       nil ->
         if Keyword.get(opts, :live_model?, false) do
           {:error, :missing_live_crucible_provider}
         else
-          {:ok, FixtureProvider}
+          {:ok, FixtureProvider, provider_opts(opts)}
         end
 
       provider_module when is_atom(provider_module) ->
-        if Code.ensure_loaded?(provider_module) do
-          {:ok, provider_module}
-        else
-          {:error, {:provider_not_loaded, provider_module}}
+        case ensure_provider_loaded(provider_module) do
+          :ok -> runtime_provider(provider_module, opts)
+          {:error, reason} -> {:error, reason}
         end
 
       other ->
@@ -189,6 +189,46 @@ defmodule SelfHostedInferenceCore.CrucibleRuntime.Worker do
   end
 
   defp provider_opts(opts), do: Keyword.get(opts, :provider_opts, opts)
+
+  defp formal_provider_opts(opts, provider_module) do
+    opts
+    |> Keyword.take([:model_id, :model_ref, :backend, :backend_preference])
+    |> Keyword.merge(provider_opts(opts))
+    |> Keyword.put(:provider_module, provider_module)
+  end
+
+  defp ensure_provider_loaded(provider_module) do
+    if Code.ensure_loaded?(provider_module) do
+      :ok
+    else
+      {:error, {:provider_not_loaded, provider_module}}
+    end
+  end
+
+  defp runtime_provider(provider_module, opts) do
+    cond do
+      implements_behaviour?(provider_module, SelfHostedInferenceCore.CrucibleRuntime.Provider) ->
+        {:ok, provider_module, provider_opts(opts)}
+
+      implements_behaviour?(provider_module, Crucible.Provider) ->
+        {:ok, FormalProviderAdapter, formal_provider_opts(opts, provider_module)}
+
+      true ->
+        {:error, {:invalid_provider_module, provider_module}}
+    end
+  end
+
+  defp implements_behaviour?(module, behaviour) do
+    module
+    |> behaviours()
+    |> Enum.member?(behaviour)
+  end
+
+  defp behaviours(module) do
+    module.__info__(:attributes)
+    |> Keyword.get_values(:behaviour)
+    |> List.flatten()
+  end
 
   defp put_lease(state, lease_ref, lease, timer) do
     state

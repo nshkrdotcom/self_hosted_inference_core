@@ -6,6 +6,7 @@ defmodule SelfHostedInferenceCore.CrucibleRuntimeTest do
 
   alias SelfHostedInferenceCore.TestSupport.{
     FailingCrucibleProvider,
+    FormalCrucibleProvider,
     InvalidTraceCrucibleProvider
   }
 
@@ -137,6 +138,66 @@ defmodule SelfHostedInferenceCore.CrucibleRuntimeTest do
 
     assert trace.final_logits.signal_type == :final_logits
     assert trace.capability_report.optional_dropped == ["hidden"]
+  end
+
+  test "formal Crucible.Provider modules are auto-adapted by the runtime worker" do
+    id = :"crucible-runtime-formal-#{System.unique_integer([:positive])}"
+    tap_plan = tap_plan()
+
+    assert {:ok, pid} =
+             CrucibleRuntime.start_child(
+               id: id,
+               provider_module: FormalCrucibleProvider,
+               provider_opts: [model_id: "model:formal", test_pid: self()]
+             )
+
+    assert {:ok, %Crucible.CapabilityReport{} = capabilities} =
+             CrucibleRuntime.capabilities(pid)
+
+    assert capabilities.model_id == "model:formal"
+
+    snapshot = CrucibleRuntime.snapshot(pid)
+    assert snapshot.provider_kind == :model
+    assert snapshot.model_id == "model:formal"
+    assert snapshot.surface == :formal_fixture
+
+    assert {:ok, %Crucible.ForwardTrace{} = trace} =
+             CrucibleRuntime.forward(pid, tap_plan, %{prompt: "hello"})
+
+    assert trace.model_id == "model:formal"
+    assert trace.capability_report.provider_kind == :model
+    assert trace.capability_report.required_missing == []
+    assert trace.metadata[:compiled_plan_id] == "crucible-runtime-test"
+
+    assert_receive {FormalCrucibleProvider, {:compile, "crucible-runtime-test"}}
+    assert_receive {FormalCrucibleProvider, {:forward, "crucible-runtime-test"}}
+  end
+
+  test "formal provider adapter fails closed before forward for unsupported required taps" do
+    id = :"crucible-runtime-formal-required-tap-#{System.unique_integer([:positive])}"
+
+    assert {:ok, pid} =
+             CrucibleRuntime.start_child(
+               id: id,
+               provider_module: FormalCrucibleProvider,
+               provider_opts: [model_id: "model:formal", test_pid: self()]
+             )
+
+    required_plan =
+      TapPlan.new!(
+        [
+          [id: "hidden", signal_type: :hidden_state, required?: true],
+          [id: "logits", signal_type: :final_logits, required?: true]
+        ],
+        plan_id: "formal-required-hidden"
+      )
+
+    assert {:error, {:tap_compile_failed, report}} =
+             CrucibleRuntime.forward(pid, required_plan, %{prompt: "hello"})
+
+    assert report.required_missing == ["hidden"]
+    assert_receive {FormalCrucibleProvider, {:compile, "formal-required-hidden"}}
+    refute_receive {FormalCrucibleProvider, {:forward, "formal-required-hidden"}}, 50
   end
 
   test "rejects invalid forward traces at the worker boundary" do
