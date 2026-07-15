@@ -50,10 +50,10 @@ defmodule SelfHostedInferenceCore.MixProject do
       {:crucible_signal, path: "../../North-Shore-AI/crucible_signal"},
       {:crucible_signal_trace, path: "../../North-Shore-AI/crucible_signal_trace"},
       {:crucible_tap, path: "../../North-Shore-AI/crucible_tap"},
-      {:telemetry, "~> 1.4"},
-      {:ex_doc, "~> 0.40", only: :dev, runtime: false},
-      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:dialyxir, "~> 1.4", only: :dev, runtime: false}
+      {:telemetry, "~> 1.4.2"},
+      {:ex_doc, "~> 0.40.3", only: :dev, runtime: false},
+      {:credo, "~> 1.7.19", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4.7", only: :dev, runtime: false}
     ]
   end
 
