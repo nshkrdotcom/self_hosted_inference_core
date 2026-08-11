@@ -7,6 +7,8 @@ Versioning.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-10
+
 - Add the V4 live native Bumblebee runtime path with truthful readiness after
   tokenizer/model/backend/preflight/tap-plan setup and live CPU-heavy gate
   coverage.
@@ -20,6 +22,9 @@ Versioning.
 - Add governed self-hosted endpoint authority materialization for target
   preferences and Ollama attach specs, with direct unmanaged auth/config/attach
   field rejection and raw-header-free attach instance keys.
+- Make the published package resolve Execution Plane dependencies from Hex
+  when checkout-only build support is absent, while retaining deterministic
+  sibling paths for workspace development.
 
 ## [0.1.0] - 2026-04-06
 

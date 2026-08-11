@@ -16,7 +16,6 @@ defmodule SelfHostedInferenceCore.MixProject do
   @version "0.2.0"
   @source_url "https://github.com/nshkrdotcom/self_hosted_inference_core"
   @homepage_url "https://hex.pm/packages/self_hosted_inference_core"
-  @repo_root __DIR__
 
   def project do
     [
@@ -52,27 +51,18 @@ defmodule SelfHostedInferenceCore.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      execution_plane_dep(),
-      execution_plane_process_dep(),
-      {:crucible_provider_contracts, path: "../../North-Shore-AI/crucible_provider_contracts"},
-      {:crucible_signal, path: "../../North-Shore-AI/crucible_signal"},
-      {:crucible_signal_trace, path: "../../North-Shore-AI/crucible_signal_trace"},
-      {:crucible_tap, path: "../../North-Shore-AI/crucible_tap"},
+      workspace_dep(:execution_plane, "~> 0.3.0"),
+      workspace_dep(:execution_plane_process, "~> 0.3.0"),
+      workspace_dep(:crucible_provider_contracts, "~> 0.1.0"),
+      workspace_dep(:crucible_signal, "~> 0.1.0"),
+      workspace_dep(:crucible_signal_trace, "~> 0.1.0"),
+      workspace_dep(:crucible_tap, "~> 0.1.0"),
       {:telemetry, "~> 1.4.2"},
       {:ex_doc, "~> 0.40.3", only: :dev, runtime: false},
       {:credo, "~> 1.7.19", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4.7", only: :dev, runtime: false}
     ]
   end
-
-  defp execution_plane_dep do
-    DependencySources.dep(:execution_plane, @repo_root)
-  end
-
-  defp execution_plane_process_dep do
-    DependencySources.dep(:execution_plane_process, @repo_root)
-  end
-
 
   # In a source checkout the registry decides the source (path first). In a
   # published package there is no registry, and the requirement stated here is
