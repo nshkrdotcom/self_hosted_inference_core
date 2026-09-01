@@ -8,11 +8,9 @@
 
 ## Execution Plane Stack
 - This repo owns service-runtime semantics above `execution_plane`; do not expose raw process runtime mechanics as the public API.
-- Keep `execution_plane` dependency resolution publish-aware through
-  `build_support/dependency_sources.exs` and
-  `build_support/dependency_sources.config.exs`: local path deps for sibling
-  development, GitHub fallback when needed, and Hex constraints for release
-  builds.
+- Keep committed `execution_plane` dependency tuples as ordinary Hex
+  requirements. Managed development loads the MWO bootstrap and gets eligible
+  local/GitHub/Hex coordinates from Portfolio Registry.
 - Local sibling development uses `../execution_plane/core/execution_plane` for
   `:execution_plane` and `../execution_plane/runtimes/execution_plane_process`
   for the process lane. Do not point `:execution_plane` at the sibling repo
@@ -20,9 +18,9 @@
 - `llama_cpp_sdk` is the active proof backend for this layer.
 
 ## Dependency Sources And Runtime Env
-- Use `.dependency_sources.local.exs` for local dependency-source overrides; it
-  is gitignored and must not be committed.
-- Dependency source selection must not read OS environment variables.
+- Operator source preferences live outside this repository. MWO's
+  process-scoped bootstrap pointer is the only dependency-management
+  environment input read by `mix.exs`; publish mode remains Hex-only.
 - This repo is not in the discovered Weld consumer set. Do not add a Weld
   dependency during this Phase 2 cleanup pass.
 - Runtime application code under `lib/**` must not call direct OS env APIs such
